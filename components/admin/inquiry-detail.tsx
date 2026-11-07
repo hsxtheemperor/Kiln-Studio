@@ -114,7 +114,7 @@ export function InquiryDetail({ id }: { id: string }) {
     }
   }
 
-  const brief = inquiry?.project_briefs?.[0];
+  const brief = inquiry ? ((inquiry as InquiryDetailPayload).project_briefs ?? [])[0] : undefined;
   const priorityLabel = brief?.priority_label ?? "unknown";
   const priorityScore = brief?.priority_score ?? 0;
 

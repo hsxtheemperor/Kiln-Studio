@@ -101,10 +101,35 @@ export type ProjectBriefInsert = {
 export type ProjectMessageRow = {
   id: string;
   inquiry_id: string;
-  sender_type: "client" | "employee";
-  sender_id: string;
+  sender_type: "client" | "designer" | "team";
+  sender_id: string | null;
+  sender_name: string;
   body: string;
   created_at: string;
+  updated_at?: string;
+};
+
+export type ProjectRequestLogRow = {
+  id: string;
+  inquiry_id: string;
+  created_at: string;
+  completed_at: string | null;
+  payout_amount: number;
+  payout_currency: string;
+  status: "new" | "in_progress" | "completed" | "cancelled";
+  notes: string | null;
+};
+
+export type CompanyExpenseRow = {
+  id: string;
+  inquiry_id: string | null;
+  gross_revenue: number;
+  total_paid_out: number;
+  contributor_name: string;
+  contributor_amount: number;
+  contributor_role: string | null;
+  created_at: string;
+  updated_at: string;
 };
 
 export type FaqItemRow = {
@@ -184,12 +209,43 @@ export type Database = {
         Row: ProjectMessageRow;
         Insert: {
           inquiry_id: string;
-          sender_type: "client" | "employee";
-          sender_id: string;
+          sender_type: "client" | "designer" | "team";
+          sender_id?: string | null;
+          sender_name?: string;
           body: string;
           created_at?: string;
+          updated_at?: string;
         };
         Update: Partial<ProjectMessageRow>;
+        Relationships: [];
+      };
+      project_request_logs: {
+        Row: ProjectRequestLogRow;
+        Insert: {
+          inquiry_id: string;
+          created_at?: string;
+          completed_at?: string | null;
+          payout_amount?: number;
+          payout_currency?: string;
+          status?: "new" | "in_progress" | "completed" | "cancelled";
+          notes?: string | null;
+        };
+        Update: Partial<ProjectRequestLogRow>;
+        Relationships: [];
+      };
+      company_expenses: {
+        Row: CompanyExpenseRow;
+        Insert: {
+          inquiry_id?: string | null;
+          gross_revenue?: number;
+          total_paid_out?: number;
+          contributor_name: string;
+          contributor_amount?: number;
+          contributor_role?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<CompanyExpenseRow>;
         Relationships: [];
       };
       faq_items: {

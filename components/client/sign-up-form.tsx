@@ -84,13 +84,12 @@ export function ClientSignUpForm() {
         />
       </div>
       <div className="field">
-        <label htmlFor="client-company">Company names (optional)</label>
+        <label htmlFor="client-company">Company (optional)</label>
         <input
           id="client-company"
           name="company"
           autoComplete="organization"
-          maxLength={500}
-          placeholder="Acme, Northwind, Studio Seven"
+          maxLength={120}
           value={company}
           onChange={(event) => setCompany(event.target.value)}
         />

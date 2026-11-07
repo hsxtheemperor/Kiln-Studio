@@ -102,7 +102,26 @@ as its Redis identifier; configure the deployment proxy to set `x-real-ip`.
 The only v1 status transition field is `status`. The API should reject arbitrary
 fields, and the admin UI should offer only the four defined values.
 
-## 4. Row Level Security design
+## 4. Designer communication and financial tracking
+
+The project also keeps a lightweight operational layer for communication and
+project bookkeeping:
+
+- `public.project_messages` stores signed-in designer and team discussion notes
+  tied to a client request. Only authenticated designers/studio members may read
+  and write these logs.
+- `public.project_request_logs` records when a client request was created,
+  completed, and what payout was assigned for the work.
+- `public.company_expenses` tracks the amount earned on a request and how much
+  was distributed to each contributor so the studio can reconcile revenue and
+  team payouts.
+
+These tables are deliberately lightweight for the demo and production handoff.
+They should remain simple, auditable, and queryable by the dashboard so the
+studio can evaluate request progress and project economics without a separate
+CRM.
+
+## 5. Row Level Security design
 
 Enable RLS on `public.inquiries`. Create policies with these properties:
 

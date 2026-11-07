@@ -5,8 +5,15 @@ import { useCallback, useEffect, useState } from "react";
 import type { InquiryRow, InquiryStatus } from "@/lib/supabase/database.types";
 import { INQUIRY_STATUSES } from "@/lib/inquiries/schema";
 
+type InquiryListItem = InquiryRow & {
+  project_briefs?: Array<{
+    priority_label?: string | null;
+    priority_score?: number | null;
+  }>;
+};
+
 type ListResponse = {
-  items: InquiryRow[];
+  items: InquiryListItem[];
   page: number;
   pageSize: number;
   totalCount: number;
@@ -26,7 +33,7 @@ function formatDate(value: string) {
 }
 
 export function InquiryInbox() {
-  const [items, setItems] = useState<InquiryRow[]>([]);
+  const [items, setItems] = useState<InquiryListItem[]>([]);
   const [page, setPage] = useState(1);
   const [status, setStatus] = useState("");
   const [totalCount, setTotalCount] = useState(0);
@@ -130,27 +137,39 @@ export function InquiryInbox() {
                 <th scope="col">Name</th>
                 <th scope="col">Project</th>
                 <th scope="col">Received</th>
+                <th scope="col">Priority</th>
                 <th scope="col">Status</th>
               </tr>
             </thead>
             <tbody>
-              {items.map((inquiry) => (
-                <tr key={inquiry.id}>
-                  <td>
-                    <Link className="inbox-open" href={`/admin/inquiries/${inquiry.id}`}>
-                      <span className="inbox-name">{inquiry.name}</span>
-                    </Link>
-                    <span className="inbox-brief">{inquiry.email}</span>
-                  </td>
-                  <td><span className="inbox-brief">{inquiry.project_brief}</span></td>
-                  <td>{formatDate(inquiry.created_at)}</td>
-                  <td>
-                    <span className="status-pill" data-status={inquiry.status}>
-                      {statusLabels[inquiry.status]}
-                    </span>
-                  </td>
-                </tr>
-              ))}
+              {items.map((inquiry) => {
+                const priority = inquiry.project_briefs?.[0];
+                const priorityLabel = priority?.priority_label ?? "unknown";
+                const priorityScore = priority?.priority_score ?? 0;
+
+                return (
+                  <tr key={inquiry.id}>
+                    <td>
+                      <Link className="inbox-open" href={`/admin/inquiries/${inquiry.id}`}>
+                        <span className="inbox-name">{inquiry.name}</span>
+                      </Link>
+                      <span className="inbox-brief">{inquiry.email}</span>
+                    </td>
+                    <td><span className="inbox-brief">{inquiry.project_brief}</span></td>
+                    <td>{formatDate(inquiry.created_at)}</td>
+                    <td>
+                      <span className="status-pill" data-status={priorityLabel}>
+                        {priorityLabel} · {priorityScore}/10
+                      </span>
+                    </td>
+                    <td>
+                      <span className="status-pill" data-status={inquiry.status}>
+                        {statusLabels[inquiry.status]}
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         )}

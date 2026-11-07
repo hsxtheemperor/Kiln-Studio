@@ -25,7 +25,7 @@ export async function GET(_request: Request, { params }: RouteContext) {
 
   const { data, error } = await authorization.supabase
     .from("inquiries")
-    .select("*, project_briefs(*)")
+    .select("*")
     .eq("id", id)
     .maybeSingle();
 
@@ -44,8 +44,18 @@ export async function GET(_request: Request, { params }: RouteContext) {
     );
   }
 
+  const { data: briefData, error: briefError } = await authorization.supabase
+    .from("project_briefs")
+    .select("id, inquiry_id, priority_score, priority_label, design_goal, brand_message, target_audience, desired_outcomes, references, time_budget, design_complexity")
+    .eq("inquiry_id", id)
+    .maybeSingle();
+
+  if (briefError) {
+    console.error("Admin inquiry priority detail could not be loaded.", briefError.message);
+  }
+
   return NextResponse.json(
-    { item: data },
+    { item: { ...data, project_briefs: briefData ? [briefData] : [] } },
     { headers: { "Cache-Control": "no-store" } },
   );
 }

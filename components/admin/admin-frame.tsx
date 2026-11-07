@@ -29,7 +29,7 @@ export function AdminFrame({ children }: { children: ReactNode }) {
   return (
     <div className="admin-page">
       <header className="admin-header">
-        <Link className="admin-brand" href="/admin/inquiries">
+        <Link className="admin-brand" href="/admin">
           <strong className="brand-mark">
             <span className="brand-symbol" aria-hidden="true">k</span>
             kiln studio
@@ -37,6 +37,7 @@ export function AdminFrame({ children }: { children: ReactNode }) {
           <span>Private studio</span>
         </Link>
         <nav className="admin-nav" aria-label="Studio navigation">
+          <Link href="/admin">Dashboard</Link>
           <Link href="/admin/inquiries">Inquiries</Link>
           <button
             className="text-button"

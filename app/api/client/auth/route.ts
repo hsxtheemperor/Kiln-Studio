@@ -17,25 +17,10 @@ const SignUpSchema = z
     action: z.enum(["sign-in", "sign-up"]).optional().default("sign-up"),
     full_name: z.string().trim().min(1).max(120),
     email: z.string().trim().email().max(254),
-    company: z.string().trim().max(500).optional().default(""),
+    company: z.string().trim().max(120).optional().default(""),
     password: z.string().min(8).max(128),
   })
   .strict();
-
-function normalizeCompanyList(rawCompany: string | null | undefined): string[] {
-  if (!rawCompany) {
-    return [];
-  }
-
-  return Array.from(
-    new Set(
-      rawCompany
-        .split(/[\n,]/)
-        .map((entry) => entry.trim())
-        .filter(Boolean),
-    ),
-  );
-}
 
 export async function POST(request: Request) {
   const body = await readJsonBody(request);
@@ -120,22 +105,21 @@ export async function POST(request: Request) {
 
         if (profileError) {
           console.error("Client profile could not be saved.", profileError.message);
-        } else {
-          const companyNames = normalizeCompanyList(parsed.data.company);
-          if (companyNames.length > 0) {
-            const companyRows = companyNames.map((companyName, index) => ({
-              client_id: profileRecord.id,
-              company_name: companyName,
-              is_primary: index === 0,
-            }));
+        } else if (parsed.data.company?.trim()) {
+          const companyName = parsed.data.company.trim();
+          const { error: companyError } = await adminClient
+            .from("client_companies")
+            .upsert(
+              {
+                client_id: profileRecord.id,
+                company_name: companyName,
+                is_primary: true,
+              },
+              { onConflict: "client_id,company_name" },
+            );
 
-            const { error: companyError } = await adminClient
-              .from("client_companies")
-              .upsert(companyRows, { onConflict: "client_id,company_name" });
-
-            if (companyError) {
-              console.error("Client companies could not be saved.", companyError.message);
-            }
+          if (companyError) {
+            console.error("Client company could not be saved.", companyError.message);
           }
         }
       }

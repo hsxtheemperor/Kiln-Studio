@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
+import { buildSessionRedirect } from "@/lib/session/session-url";
 
 export function SignInForm() {
   const router = useRouter();
@@ -37,7 +38,8 @@ export function SignInForm() {
         return;
       }
 
-      router.replace("/admin/inquiries");
+      const redirectTarget = buildSessionRedirect("/admin/inquiries", email);
+      router.replace(redirectTarget);
       router.refresh();
     } catch {
       setError("Could not reach the server. Please try again.");

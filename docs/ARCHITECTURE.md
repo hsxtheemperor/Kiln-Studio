@@ -78,8 +78,8 @@ their responsibilities change.
 └── vitest.config.mts
 ```
 
-Route groups `(public)` and `(admin)` organize page layouts without changing
-public URLs. API Route Handlers remain under `app/api`.
+Route groups `(public)`, `(admin)`, and `(designer)` organize page layouts without
+changing public URLs. API Route Handlers remain under `app/api`.
 
 ## File responsibilities and status
 
@@ -113,6 +113,8 @@ public URLs. API Route Handlers remain under `app/api`.
 | `app/api/admin/auth/route.ts` | Implemented | Signs in provisioned members and signs out through Supabase Auth; public registration is not provided. |
 | `app/api/admin/inquiries/route.ts` | Implemented | Requires a studio-member session and returns a paginated, newest-first list with optional status filtering. |
 | `app/api/admin/inquiries/[id]/route.ts` | Implemented | Requires a studio-member session for detail reads and status-only updates. |
+| `app/api/designer/auth/route.ts` | Implemented | Signs in designers and enforces the trusted `designer` access level before session creation is allowed. |
+| `app/api/designer/messages/route.ts` | Implemented | Requires a signed-in designer, loads the inquiry thread, and stores messages against the matching client request. |
 
 ### Shared code
 
@@ -128,6 +130,7 @@ public URLs. API Route Handlers remain under `app/api`.
 | `components/admin/sign-in-form.tsx` | Implemented | Signs in provisioned members through the auth API. |
 | `components/admin/inquiry-inbox.tsx` | Implemented | Loads, filters, paginates, and links to inquiry records. |
 | `components/admin/inquiry-detail.tsx` | Implemented | Displays inquiry information and updates only its status. |
+| `components/designer/designer-project-room.tsx` | Implemented | Loads and sends project-room messages for a signed-in designer working on a client request. |
 | `lib/inquiries/schema.ts` | Implemented | Defines allowed fields/options, trims and normalizes submissions, and maps form data to database inserts. |
 | `lib/auth/require-client.ts` | Implemented | Verifies a valid client session and enforces the client access level for project pages. |
 | `lib/auth/require-studio-member.ts` | Implemented | Verifies the Supabase session and trusted `app_metadata.access_level` claim for admin handlers. |
