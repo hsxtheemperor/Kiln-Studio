@@ -1,6 +1,12 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import {
+  AvailabilityStatus,
+  type AvailabilityStatusValue,
+  getAvailabilityClassName,
+  getAvailabilityLabel,
+} from "@/lib/studio/constants";
 
 type ClientRequestSummary = {
   id: string;
@@ -16,7 +22,7 @@ type TeamMember = {
   name: string;
   title: string;
   specialty: string;
-  availability: "Available" | "In review" | "Busy";
+  availability: AvailabilityStatusValue;
   role: string;
 };
 
@@ -35,7 +41,7 @@ const baseTeam: TeamMember[] = [
     name: "Maya Sol",
     title: "Creative lead",
     specialty: "Brand direction",
-    availability: "Available",
+    availability: AvailabilityStatus.AVAILABLE,
     role: "Project owner",
   },
   {
@@ -43,7 +49,7 @@ const baseTeam: TeamMember[] = [
     name: "Leo Grant",
     title: "Senior designer",
     specialty: "Packaging & product",
-    availability: "In review",
+    availability: AvailabilityStatus.AWAY,
     role: "Design lead",
   },
   {
@@ -51,7 +57,7 @@ const baseTeam: TeamMember[] = [
     name: "Nina Park",
     title: "UX strategist",
     specialty: "Experience mapping",
-    availability: "Busy",
+    availability: AvailabilityStatus.BUSY,
     role: "Research + UX",
   },
   {
@@ -59,7 +65,7 @@ const baseTeam: TeamMember[] = [
     name: "Omar Singh",
     title: "Account manager",
     specialty: "Client communication",
-    availability: "Available",
+    availability: AvailabilityStatus.AVAILABLE,
     role: "Client liaison",
   },
 ];
@@ -161,8 +167,8 @@ export function StudioOperationsPanel({
                   </p>
                 </div>
                 <div className="member-assignment">
-                  <span className={`availability-pill availability-${member.availability.toLowerCase().replace(/\s+/g, "-")}`}>
-                    {member.availability}
+                  <span className={`availability-pill ${getAvailabilityClassName(member.availability)}`}>
+                    {getAvailabilityLabel(member.availability)}
                   </span>
                   <label>
                     <span>Role</span>

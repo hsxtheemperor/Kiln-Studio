@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { StudioOperationsPanel } from "@/components/studio/studio-operations-panel";
 import { requireDesigner } from "@/lib/auth/require-designer";
+import { getPriorityLabel } from "@/lib/project-priority";
 
 export default async function DesignerHomePage() {
   const authorization = await requireDesigner();
@@ -11,34 +12,62 @@ export default async function DesignerHomePage() {
   }
 
   const { data: briefs, error } = await authorization.supabase
-    .from("project_briefs")
-    .select("id, inquiry_id, priority_score, priority_label, design_complexity")
-    .order("priority_score", { ascending: false })
+    .from("inquiry_briefs")
+    .select("id, inquiry_id, design_complexity")
     .limit(20);
 
   if (error) {
     console.error("Priority dashboard could not be loaded.", error.message);
   }
 
-  const inquiryIds = (briefs ?? []).map((brief) => brief.inquiry_id);
-  let inquiryMap = new Map<string, { name?: string | null; email?: string | null; company?: string | null; status?: string | null }>();
+  const safeBriefs: Array<{
+    id: string;
+    inquiry_id: string;
+    design_complexity: number | null;
+  }> = Array.isArray(briefs)
+    ? (briefs as Array<{
+        id: string;
+        inquiry_id: string;
+        design_complexity: number | null;
+      }>)
+    : [];
+  const inquiryIds = safeBriefs.map((brief) => brief.inquiry_id);
+  let inquiryMap = new Map<string, { name?: string | null; email?: string | null; company?: string | null; status?: string | null; priority_score?: number }>();
 
   if (inquiryIds.length > 0) {
     const { data: inquiries } = await authorization.supabase
       .from("inquiries")
-      .select("id, name, email, company, status")
+      .select("id, name, email, company, status, priority_score")
       .in("id", inquiryIds);
 
     inquiryMap = new Map((inquiries ?? []).map((inquiry) => [inquiry.id, inquiry]));
   }
 
-  const items = (briefs ?? []).map((brief) => ({
-    ...brief,
-    inquiry: inquiryMap.get(brief.inquiry_id) ?? null,
-  }));
+  const items = safeBriefs
+    .map((brief) => ({
+      ...brief,
+      inquiry: inquiryMap.get(brief.inquiry_id) ?? null,
+      priority_score: inquiryMap.get(brief.inquiry_id)?.priority_score ?? 0,
+    }))
+    .sort((left, right) => right.priority_score - left.priority_score);
 
   return (
-    <main className="admin-main">
+    <div className="admin-page">
+      <header className="admin-header">
+        <Link className="admin-brand" href="/designer">
+          <strong className="brand-mark">
+            <span className="brand-symbol" aria-hidden="true">k</span>
+            kiln studio
+          </strong>
+          <span>Designer workspace</span>
+        </Link>
+        <nav className="admin-nav" aria-label="Designer navigation">
+          <Link href="/designer">Dashboard</Link>
+          <Link href="/designer/team">Team</Link>
+          <Link href="/">Home</Link>
+        </nav>
+      </header>
+      <main className="admin-main">
       <div className="admin-heading-row">
         <div>
           <p className="eyebrow">Designer workspace</p>
@@ -80,8 +109,8 @@ export default async function DesignerHomePage() {
                   </div>
                 </td>
                 <td>
-                  <span className="status-pill" data-status={brief.priority_label ?? "unknown"}>
-                    {brief.priority_label ?? "unknown"} · {brief.priority_score ?? 0}/10
+                  <span className="status-pill" data-status={getPriorityLabel(brief.priority_score)}>
+                    {getPriorityLabel(brief.priority_score)} · {brief.priority_score}/10
                   </span>
                 </td>
                 <td>{brief.design_complexity ?? "—"}</td>
@@ -112,6 +141,7 @@ export default async function DesignerHomePage() {
           created_at: new Date().toISOString(),
         }))}
       />
-    </main>
+      </main>
+    </div>
   );
 }

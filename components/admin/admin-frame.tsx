@@ -38,6 +38,7 @@ export function AdminFrame({ children }: { children: ReactNode }) {
         </Link>
         <nav className="admin-nav" aria-label="Studio navigation">
           <Link href="/admin">Dashboard</Link>
+          <Link href="/admin/team">Team</Link>
           <Link href="/admin/inquiries">Inquiries</Link>
           <button
             className="text-button"

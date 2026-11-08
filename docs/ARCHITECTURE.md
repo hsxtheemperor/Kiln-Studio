@@ -1,184 +1,168 @@
 # Kiln Studio Architecture
 
-This document tracks the intended source layout for the v1 application. It follows
-the decisions in [PLAN.md](./PLAN.md); update it when files are added, removed, or
-their responsibilities change.
+This is the current implementation map. It distinguishes working application
+flows from demo-only UI and future production work; update it when routes or
+file responsibilities change.
 
-## Status key
-
-- **Scaffolded** — the path exists with a minimal starter or placeholder.
-- **Present** — supporting project document already exists.
-- **Planned** — create it when implementing the corresponding feature.
-
-## Repository layout
+## System overview
 
 ```text
-.
-├── app/
-│   ├── (public)/
-│   │   ├── page.tsx
-│   │   ├── services/page.tsx
-│   │   ├── work/page.tsx
-│   │   ├── inquiry/page.tsx
-│   │   ├── inquiry/confirmation/page.tsx
-│   │   ├── account/sign-in/page.tsx
-│   │   ├── account/sign-up/page.tsx
-│   │   ├── account/projects/page.tsx
-│   │   ├── account/projects/[id]/page.tsx
-│   │   └── layout.tsx
-│   ├── (admin)/
-│   │   ├── admin/sign-in/page.tsx
-│   │   ├── admin/inquiries/page.tsx
-│   │   ├── admin/inquiries/[id]/page.tsx
-│   │   └── layout.tsx
-│   ├── api/
-│   │   ├── inquiries/route.ts
-│   │   ├── client/
-│   │   │   └── auth/route.ts
-│   │   └── admin/
-│   │       ├── auth/route.ts
-│   │       └── inquiries/
-│   │           ├── route.ts
-│   │           └── [id]/route.ts
-│   ├── globals.css
-│   └── layout.tsx
-├── components/
-│   ├── public/
-│   ├── inquiry/
-│   ├── client/
-│   └── admin/
-├── lib/
-│   ├── auth/
-│   │   ├── require-client.ts
-│   │   └── require-studio-member.ts
-│   ├── http/read-json.ts
-│   ├── inquiries/schema.ts
-│   ├── rate-limit/inquiry.ts
-│   └── supabase/
-│       ├── database.types.ts
-│       ├── public-inquiry.ts
-│       └── session.ts
-├── supabase/
-│   └── migrations/
-├── tests/
-│   ├── unit/
-│   ├── api/
-│   └── e2e/
-├── .env.example
-├── .gitignore
-├── ARCHITECTURE.md
-├── DATABASE.md
-├── next-env.d.ts
-├── next.config.ts
-├── package.json
-├── pnpm-lock.yaml
-├── PLAN.md
-├── README.md
-├── tsconfig.json
-└── vitest.config.mts
+Public browser
+  ├─ Public site and inquiry form
+  │    └─ POST /api/inquiries
+  │         ├─ Zod validation, honeypot, Upstash rate limit
+  │         ├─ server-only atomic inquiry + brief persistence
+  │         └─ computed priority on the inquiry
+  └─ Client account
+       └─ Supabase Auth cookie session → client profile / owned inquiries
+
+Studio browser
+  ├─ Admin sign-in → studio_member app_metadata
+  │    ├─ dashboard and inquiry inbox
+  │    └─ project operations: PM assignment, deadlines, completion, channel ordering
+  └─ Designer sign-in → designer or studio_member app_metadata
+       ├─ priority queue and inquiry message room
+       └─ Team page (currently sample data/local chat state)
+
+Next.js server and Route Handlers
+  └─ Supabase Auth/Postgres; cookie-bound client for user-scoped operations
+       ├─ inquiry and extended-brief RPC
+       ├─ project lifecycle and system activity triggers
+       └─ database-only finance and quarterly-report schema
 ```
 
-Route groups `(public)`, `(admin)`, and `(designer)` organize page layouts without
-changing public URLs. API Route Handlers remain under `app/api`.
+The browser UI is not a security boundary. Server-side auth checks and database
+RLS must protect private data. The team tables/migrations are an initial data
+model, not proof that the current Team page uses live database data.
 
-## File responsibilities and status
+## Route groups
 
-### Application routes
+Next.js route groups organize layouts without adding URL prefixes.
 
-| File | Status | Why it exists |
-| --- | --- | --- |
-| `app/layout.tsx` | Scaffolded | Provides the shared document shell, metadata, and global styles. |
-| `app/globals.css` | Implemented | Defines responsive public/admin styling, typography, color tokens, and accessible focus states. |
-| `app/(public)/layout.tsx` | Implemented | Provides public navigation, the demo notice, and footer. |
-| `app/(public)/page.tsx` | Implemented | Introduces the fictional studio and links to the inquiry flow. |
-| `app/(public)/services/page.tsx` | Implemented | Describes its three design services. |
-| `app/(public)/work/page.tsx` | Implemented | Displays clearly labeled fictional concept work. |
-| `app/(public)/inquiry/page.tsx` | Implemented | Presents privacy context and the working inquiry form, and pre-fills it from an authenticated client profile when available. |
-| `app/(public)/inquiry/confirmation/page.tsx` | Implemented | Shows confirmation only after a successful submission in the current browser session. |
-| `app/(public)/account/sign-in/page.tsx` | Implemented | Presents the client sign-in view for project tracking. |
-| `app/(public)/account/sign-up/page.tsx` | Implemented | Creates a client account and saves the requested profile details. |
-| `app/(public)/account/projects/page.tsx` | Implemented | Lists only the authenticated client's project requests and statuses. |
-| `app/(public)/account/projects/[id]/page.tsx` | Implemented | Shows the details of a single project request for the signed-in client. |
-| `app/(admin)/layout.tsx` | Implemented | Provides the admin route-group wrapper without adding public content. |
-| `app/(admin)/admin/sign-in/page.tsx` | Implemented | Presents private studio-member sign-in; there is no public registration. |
-| `app/(admin)/admin/inquiries/page.tsx` | Implemented | Protects and displays the paginated, filterable inquiry inbox. |
-| `app/(admin)/admin/inquiries/[id]/page.tsx` | Implemented | Protects inquiry detail and allowed status controls. |
+| Path | Responsibility |
+| --- | --- |
+| `app/(public)/` | Public site, inquiry form, client sign-in/up, and client request pages. |
+| `app/(admin)/admin/` | Studio-member dashboard, inquiry management, and Team view. |
+| `app/(designer)/designer/` | Designer priority queue, inquiry room, and Team view. |
+| `app/api/` | Server-side inquiry, auth, admin-inquiry, and designer-message handlers. |
 
-### API Route Handlers
+## Important files
 
-| File | Status | Why it exists |
-| --- | --- | --- |
-| `app/api/inquiries/route.ts` | Implemented | Validates and normalizes input, checks the honeypot, rate-limits, and attaches the client profile when the sender is signed in. |
-| `app/api/client/auth/route.ts` | Implemented | Signs clients in and up with Supabase Auth and stores the linked client profile in `client_profiles`. |
-| `app/api/admin/auth/route.ts` | Implemented | Signs in provisioned members and signs out through Supabase Auth; public registration is not provided. |
-| `app/api/admin/inquiries/route.ts` | Implemented | Requires a studio-member session and returns a paginated, newest-first list with optional status filtering. |
-| `app/api/admin/inquiries/[id]/route.ts` | Implemented | Requires a studio-member session for detail reads and status-only updates. |
-| `app/api/designer/auth/route.ts` | Implemented | Signs in designers and enforces the trusted `designer` access level before session creation is allowed. |
-| `app/api/designer/messages/route.ts` | Implemented | Requires a signed-in designer, loads the inquiry thread, and stores messages against the matching client request. |
+### Pages and components
 
-### Shared code
+| File | Responsibility |
+| --- | --- |
+| `app/layout.tsx` | Root metadata/styles and Vercel Speed Insights. |
+| `app/globals.css` | Shared public, admin, designer, and Team visual system. |
+| `app/(public)/page.tsx`, `services/page.tsx`, `work/page.tsx` | Public landing, service, and fictional concept-work pages. |
+| `app/(public)/inquiry/page.tsx` | Inquiry entry point and optional client prefill. |
+| `components/inquiry/inquiry-form.tsx` | Client-side form UX; server validation remains authoritative. |
+| `components/inquiry/confirmation-gate.tsx` | Prevents direct access from appearing to confirm an unsaved request. |
+| `app/(public)/account/` and `components/client/` | Client auth forms and request-list/detail views. |
+| `app/(admin)/admin/page.tsx` | Loads and renders the admin dashboard. |
+| `components/admin/admin-dashboard.tsx` | Inquiry summary, top priority, latest inquiries, and team overview currently backed in part by sample roster content. |
+| `components/admin/admin-frame.tsx` | Admin shell/navigation and sign-out UI. |
+| `components/admin/inquiry-inbox.tsx`, `inquiry-detail.tsx` | Inquiry list/filter/pagination and status update UI. |
+| `components/team/team-workspace.tsx` | Team roster, assignments, channel preview, and local-state demo chat. |
+| `components/designer/designer-project-room.tsx` | Designer/client-request message interface. |
 
-| File or directory | Status | Why it exists |
-| --- | --- | --- |
-| `components/public/` | Scaffolded | Holds reusable public-site presentation components. |
-| `components/inquiry/` | Implemented | Holds the inquiry form and save-gated confirmation flow. |
-| `components/inquiry/inquiry-form.tsx` | Implemented | Posts inquiry fields, shows validation/server errors, and only navigates after a successful save. |
-| `components/inquiry/confirmation-gate.tsx` | Implemented | Prevents a direct visit from looking like a successful submission. |
-| `components/client/sign-in-form.tsx` | Implemented | Signs clients in through the client auth API and redirects to the project dashboard. |
-| `components/client/sign-up-form.tsx` | Implemented | Creates a client account with a linked profile and password. |
-| `components/admin/admin-frame.tsx` | Implemented | Provides authenticated workspace navigation and sign-out. |
-| `components/admin/sign-in-form.tsx` | Implemented | Signs in provisioned members through the auth API. |
-| `components/admin/inquiry-inbox.tsx` | Implemented | Loads, filters, paginates, and links to inquiry records. |
-| `components/admin/inquiry-detail.tsx` | Implemented | Displays inquiry information and updates only its status. |
-| `components/designer/designer-project-room.tsx` | Implemented | Loads and sends project-room messages for a signed-in designer working on a client request. |
-| `lib/inquiries/schema.ts` | Implemented | Defines allowed fields/options, trims and normalizes submissions, and maps form data to database inserts. |
-| `lib/auth/require-client.ts` | Implemented | Verifies a valid client session and enforces the client access level for project pages. |
-| `lib/auth/require-studio-member.ts` | Implemented | Verifies the Supabase session and trusted `app_metadata.access_level` claim for admin handlers. |
-| `lib/auth/require-studio-member-page.ts` | Implemented | Redirects unauthenticated/non-member visitors away from private admin pages. |
-| `lib/supabase/session.ts` | Implemented | Creates the cookie-bound Supabase client used for authentication and RLS-protected admin operations. |
-| `lib/supabase/public-inquiry.ts` | Implemented | Exposes only the server-side inquiry insert using the service-role key. |
-| `lib/supabase/database.types.ts` | Implemented | Defines typed inquiry rows and inserts for Supabase queries. |
-| `lib/rate-limit/inquiry.ts` | Implemented | Applies a shared Upstash sliding-window limit to public inquiry submissions. |
-| `lib/http/read-json.ts` | Implemented | Validates JSON content type and bounds request body size before parsing. |
+### API and shared server logic
 
-### Data, tests, and project documentation
+| File | Responsibility |
+| --- | --- |
+| `app/api/inquiries/route.ts` | Public request validation, abuse controls, priority computation, and atomic inquiry/brief persistence. |
+| `app/api/client/auth/route.ts` | Client sign-in/up; creates/updates profile and optional single company record. |
+| `app/api/admin/auth/route.ts` | Studio-member sign-in/sign-out. |
+| `app/api/designer/auth/route.ts` | Designer/studio-member sign-in gate. |
+| `app/api/admin/inquiries/route.ts`, `[id]/route.ts` | Protected inquiry list/detail and status/priority updates. |
+| `app/api/designer/messages/route.ts` | Protected inquiry-linked designer message reads/writes. |
+| `lib/inquiries/schema.ts` | Inquiry options, validation, normalization, and database insert mapping. |
+| `lib/project-priority.ts` | Priority score and label computation. |
+| `lib/studio/constants.ts` | UI constants/types for availability, roles, channels, and labels. |
+| `lib/auth/require-*.ts` | Cookie-bound session verification and access-level checks. |
+| `lib/supabase/session.ts` | Supabase server client and cookie adapter. In Server Components, cookie refresh writes may not be applied; writable cookie operations belong in Route Handlers/Actions. |
+| `lib/supabase/public-inquiry.ts` | Narrow server-only call to the database RPC that creates an inquiry and extended brief atomically. |
+| `lib/rate-limit/inquiry.ts`, `lib/http/read-json.ts` | Shared rate limit and bounded JSON parsing. |
 
-| File or directory | Status | Why it exists |
-| --- | --- | --- |
-| `supabase/migrations/20261107000000_create_inquiries.sql` | Implemented | Creates the inquiry table, constraints, indexes, update timestamp trigger, RLS policies, and narrow grants. |
-| `supabase/migrations/20261107010000_client_accounts_and_project_access.sql` | Implemented | Adds the `client_profiles` table, links inquiries to the profile, and restricts project reads to the signed-in client. |
-| `tests/unit/inquiry-schema.test.ts` | Implemented | Tests validation, normalization, option restrictions, and honeypot exclusion from persistence. |
-| `tests/unit/read-json.test.ts` | Implemented | Tests JSON content type handling and request-size limits. |
-| `tests/api/public-inquiry.test.ts` | Implemented | Tests valid persistence flow, honeypot rejection, rate limiting, and persistence failure behavior. |
-| `tests/api/admin-inquiries.test.ts` | Implemented | Confirms the inquiry list returns the authorization response before private data access. |
-| `tests/unit/` | Implemented | Contains isolated validation and request-body tests. |
-| `tests/api/` | Implemented | Contains public endpoint and authorization-gate tests; authenticated Supabase/RLS integration coverage remains to be added. |
-| `tests/e2e/` | Scaffolded | Will verify the complete inquiry-to-admin flow using synthetic data. |
-| `.env.example` | Present | Documents required environment variable names with placeholders only; never put secrets here. |
-| `.gitignore` | Present | Excludes local secrets, generated files, and dependency output from version control. |
-| `package.json` | Present | Declares the Next.js app, backend dependencies, and test/build scripts. |
-| `pnpm-lock.yaml` | Present | Locks the JavaScript dependency graph for repeatable pnpm installs. |
-| `tsconfig.json` | Present | Enables strict TypeScript checking for the application. |
-| `next.config.ts` | Present | Holds the Next.js application configuration. |
-| `next-env.d.ts` | Present | Provides Next.js generated TypeScript declarations. |
-| `vitest.config.mts` | Present | Configures the focused unit-test suite. |
-| `PLAN.md` | Present | Defines product scope, decisions, workflows, and completion criteria. |
-| `README.md` | Present | Explains local setup, API routes, test commands, and current implementation limits. |
-| `ARCHITECTURE.md` | Present | Tracks the intended file layout and each file's responsibility. |
-| `DATABASE.md` | Present | Describes the proposed Supabase schema, RLS boundaries, migration workflow, and setup checks. |
+### Database, tests, and docs
+
+| Path | Responsibility |
+| --- | --- |
+| `supabase/migrations/20261107000000_create_inquiries.sql` | Base inquiry table, constraints, RLS, and grants. |
+| `supabase/migrations/20261107010000_client_accounts_and_project_access.sql` | Client profiles, inquiry ownership, and client access policies. |
+| `supabase/migrations/20261107020000_client_company_relationships.sql` | Client-company relation and migration from the old profile company field. |
+| `supabase/migrations/20261107030000_designer_messages_and_finance_tracking.sql` | Inquiry messages, request logs, and company-expense records. |
+| `supabase/migrations/20261107040000_team_roles_and_channels.sql` | Team members, inquiry assignments, channels, members, and channel messages. |
+| `supabase/migrations/20261107050000_team_statuses_and_channel_roles.sql` | Availability/channel role constraints and a legacy one-PM-per-inquiry index. |
+| `supabase/migrations/20261107060000_project_briefs_priority.sql` | Historical migration that added extended brief fields and priority; migration 13 moved priority to `inquiries` and renamed the brief table. |
+| `supabase/migrations/20261108000000_projects_and_system_activity.sql` | Converts accepted inquiries into projects, adds project teams/deadlines/project channels, and logs app-table changes for the system activity channel. |
+| `supabase/migrations/20261108010000_harden_table_grants.sql` | Removes broad table privileges and grants only the operations needed by authenticated policies. |
+| `supabase/migrations/20261108020000_fix_studio_access_policies.sql` | Aligns studio/designer RLS with trusted app-metadata claims. |
+| `supabase/migrations/20261108030000_allow_project_brief_upserts.sql` | Adds the service-role SELECT privilege required for project-brief upserts. |
+| `supabase/migrations/20261108040000_enforce_message_sender_identity.sql` | Enforces message sender identity and retains the archived-channel posting lock. |
+| `supabase/migrations/20261108050000_align_inquiry_priority_and_finance.sql` | Renames briefs to `inquiry_briefs`, moves priority onto inquiries, restricts the activity feed to studio members, and adds normalized finance and quarterly-report tables/functions. |
+| `supabase/tests/` | pgTAP coverage for inquiry priority/atomic writes, project lifecycle and RLS, finance/report behavior, grants, team roles, and channel rules. |
+| `.github/workflows/ci.yml` | Runs application tests/typecheck/build and clean local Supabase migration, lint, and pgTAP checks on PRs and pushes to `main`; no deployment. |
+| `lib/supabase/database.types.ts` | Application-side Supabase row/insert types. |
+| `tests/unit/`, `tests/lib/`, `tests/api/` | Focused validation, priority, and API/auth tests. |
+| `tests/e2e/` | Placeholder for browser-level workflows. |
+| `docs/` | Current architecture, schema, demo, project status, and production direction. |
+
+## Authentication boundaries
+
+- Supabase Auth owns credentials and cookie-bound sessions.
+- Admin routes require trusted `app_metadata.access_level = "studio_member"`.
+- Designer routes accept trusted `access_level = "designer"` or
+  `"studio_member"`.
+- Client routes accept the client access levels checked by the client guard.
+- Do not use editable `user_metadata` as an authorization source.
+- The service-role key is server-only and bypasses RLS; keep its use narrow.
+
+## Implemented versus demo-only
+
+**Connected to backend:** public inquiry and brief persistence, inquiry priority,
+client account/profile flows, admin inquiry reads and status/priority updates,
+and designer inquiry messaging (subject to the deployed Supabase policies and
+configuration).
+
+**Not yet connected as a live Team system:** the roster/availability UI,
+assignment display, regular Team messages, and project team editing UI. The
+latest migration creates a project and project channel when an admin changes an
+inquiry to `accepted`, enforces admin-only PM changes, and synchronizes project
+memberships with project-channel memberships. The Team page exposes admin PM
+assignment, deadline editing, PM-only completion, and the ordered project
+channel list. A project completion requires its PM, then archives the channel
+against new messages while retaining history for current channel members.
+Project channels are ranked by priority descending, then nearest deadline via
+`list_project_channels()`. Project membership editing remains unconnected. See
+[DATABASE.md](./DATABASE.md) and [PLAN.md](./PLAN.md).
+
+Project channel descriptions are generated from the related inquiry and brief
+and refreshed if inquiry/brief details change. System audit events record the
+database columns changed, not the values, and are attached to the System
+activity channel.
+
+**System activity:** the database records inserts, updates, and deletes on the
+listed operational tables as audit events containing table, row ID, operation,
+changed column names, actor, and timestamp. It intentionally does not copy
+before/after values (which may contain client data). Only studio members can
+read these events; the system channel is event-only and the UI to render its
+feed remains pending.
+
+**Finance:** normalized revenue, payout, expense, recurring-expense, and
+quarterly-report tables plus database totals/publishing functions are present.
+Finance APIs, entry forms, and report screens are not implemented. Legacy
+`project_request_logs` and `company_expenses` remain for later reviewed data
+reconciliation and should not receive new finance records.
 
 ## Boundaries to preserve
 
-- Public and admin page components remain layout scaffolds. The backend handlers
-  now exist, but must be configured with rotated Supabase/Upstash credentials,
-  tested against a migrated project, and connected to the UI before release.
-- Keep authorization in server Route Handlers and enforce private data access with
-  PostgreSQL Row Level Security; page visibility alone is not protection.
-- Use the authenticated user's Supabase session for admin reads and updates.
-- Keep any service-role client server-only and limited to the validated public
-  inquiry insert. Never use it for admin operations or expose it to the browser.
-- Do not store the honeypot value, collect attachments, or log inquiry contents.
-- Use shared domain validation so UI and endpoint behavior remain consistent;
-  server-side validation is authoritative.
-- Keep email, public registration, and other explicitly deferred features out of
-  the v1 structure unless the plan is deliberately revised.
+- Validate public input on the server and do not report success when persistence
+  fails.
+- Keep authorization checks on the server and verify RLS in Supabase itself.
+- Never expose secrets, session tokens, or service-role credentials to client
+  code or tracked files.
+- Keep the inquiry priority logic in `lib/project-priority.ts` rather than
+  duplicating formulas across dashboards.
+- Label sample names, assignments, and conversations as demo content until they
+  are replaced with persistent records.

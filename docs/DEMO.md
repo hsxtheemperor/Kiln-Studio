@@ -1,72 +1,99 @@
-# Demo plan: embedded studio chat and collaboration workflow
+# Demo behavior and scope
 
-This document describes the current demo we are building inside the Kiln Studio app. The goal is to prove the product workflow in a simple, hosted website experience without locking the project to third-party system requirements too early.
+Kiln Studio is a fictional design-studio operations demo. Its public inquiry
+flow and selected account/admin/designer paths use Supabase, while some
+collaboration views are intentionally illustrative. This document distinguishes
+the connected features from the prototype UI.
 
-## What the demo is doing right now
+## Public and client experience
 
-The current demo is focused on a lightweight internal coordination layer for the studio team:
+- Public landing, service, and fictional concept-work pages.
+- Inquiry form captures contact information, requested service, budget/timeline,
+  and design-brief fields such as goals, audience, references, complexity, and
+  outcomes.
+- The server validates and normalizes values, checks a honeypot, applies shared
+  rate limiting, computes priority, and atomically stores the inquiry and
+  extended brief.
+- New inquiries remain inquiries. When a studio admin sets an inquiry's status
+  to `Accepted`, the database creates one project record and one dedicated
+  project channel. The project record has a deadline date field and an
+  admin-assigned project manager.
+- Client account sign-up/sign-in and request list/detail views are present.
+- Sign-up allows no company or one company name; no multi-company sign-up
+  control is offered.
 
-- Admin users can monitor incoming client requests.
-- Designers can review the same active inquiry queue from their own dashboard.
-- Both roles have a shared internal team room for communication and coordination.
-- Team members can be assigned roles such as design lead, client liaison, project owner, and research/UX owner.
-- A simple chat thread lets the studio quickly align on priorities, next steps, and handoffs.
+## Studio and designer experience
 
-This is intentionally a front-end-first prototype to test the workflow and the user experience before building a production-grade backend sync layer.
+- Admin sign-in is private/provisioned, not public registration.
+- The admin dashboard shows inquiry counts, latest requests, priority context,
+  and a team overview.
+- Admin inquiry inbox supports status-filtered/paginated results, detail, and
+  status/priority updates.
+- Designer sign-in is separate. Designers can review the priority queue,
+  request details, and inquiry-linked project messages.
+- Admin and designer workspaces each include a separate **Team** route.
 
-## Demo scope
+## Team workspace: prototype boundary
 
-### Admin dashboard
+The Team page currently renders sample team members, project assignments,
+availability, and sample chat messages from React component state. Sending a
+Team chat message updates only the current page state; it is not written to
+Supabase and does not synchronize between browsers. Project channels are live:
+the Team page lists them in database priority/deadline order, lets admins assign
+a PM and set a deadline, and lets the assigned PM set a deadline or complete
+the project. Projects get dedicated channels automatically, with inquiry
+details as the channel description.
 
-The admin view shows:
+The UI illustrates the intended workflow:
 
-- total inquiry counts
-- recent leads
-- urgent or high-priority work
-- live project requests from clients
-- assigned team members and role changes
-- internal team chat for coordination
+- availability options: `AVAILABLE`, `BUSY`, `AWAY`, `ON_LEAVE`;
+- example working roles and PM role;
+- General, Announcements, and project channel concepts;
+- member and assignment visibility.
 
-### Designer dashboard
+It does **not** currently implement live user-set availability, database-backed
+team roster, project membership editing, channel chat, announcement write
+permissions, or the System activity feed viewer. The database enforces project
+membership access and allows current project members to read archived channel
+history; removed members lose access. The Team page must not be used to
+coordinate confidential real work.
 
-The designer view shows:
+## Other modeled but not fully surfaced data
 
-- the priority queue for active briefs
-- client request context
-- urgency and complexity information
-- a team room for internal discussion and assignment
+- `inquiry_briefs` is persisted with each submitted inquiry. Priority is stored
+  on the inquiry; the brief keeps its scoring inputs.
+- `project_messages` has a designer API and request room; this is separate from
+  the local Team chat prototype.
+- `project_revenue`, `project_payouts`, `expenses`, `recurring_expenses`, and
+  quarterly report tables/functions model finance, but no finance API or UI is
+  implemented. Legacy `project_request_logs` and `company_expenses` remain for
+  later reconciliation and should not receive new finance records.
+- `system_activity_logs` records operational table changes and is readable by
+  studio members only. The System channel is an event feed, not a chat composer,
+  and its viewer UI is not yet implemented.
+- The database-backed project channel list is live; roster, member editing, and
+  regular Team chat still use sample/local state.
 
-### Chat MVP behavior
+## Demo setup and walkthrough
 
-The demo chat is intentionally simple:
+1. Configure Supabase and Upstash using `.env.example` as the variable-name
+   reference.
+2. Apply the full SQL migration chain to a development database.
+3. Provision test accounts through a trusted Supabase admin mechanism and set
+   the proper `app_metadata.access_level`; do not add passwords or privileged
+   keys to docs or source.
+4. Run `pnpm dev`, submit a synthetic inquiry, and verify it is persisted before
+   the confirmation page is shown.
+5. Sign in as a provisioned client to inspect owned requests, as a studio
+   member to review/update inquiry status, or as a designer to inspect the
+   priority queue and message room.
+6. Visit `/admin/team` or `/designer/team` to see the sample collaboration UI;
+   remember its chat and roster are not live backend data.
 
-- it is embedded directly inside the dashboard
-- it is local UI state only for now
-- it demonstrates the workflow, not a production-grade real-time infrastructure
-- it acts as a stand-in for Slack-style collaboration during the product validation phase
+## Release cautions
 
-## Why this is the right MVP
-
-This is the fastest path to validating the product:
-
-1. It reveals whether the studio workflow feels useful.
-2. It lets us prove the internal coordination process on the website itself.
-3. It keeps the project moving without third-party API overhead.
-4. It gives us a clean foundation to upgrade to real Slack sync later.
-
-## What to treat as future work
-
-The demo does not yet include:
-
-- persistent chat storage in the database
-- real-time multi-user sync across browsers
-- employee auth and permission enforcement for team chats
-- message retention rules or moderation
-- Slack API integration or webhook handling
-- identity mapping between website users and Slack users
-
-## Production upgrade path
-
-The current chat is a placeholder for the production model. Once the workflow feels right, we can replace the embedded in-memory chat with a backed system that syncs with Slack and preserves project context for team discussions.
-
-See [PROD.md](./PROD.md) for the production plan.
+Do not present the fictional studio or sample project names as real client
+work. Do not publish actual inquiry data. The documented 14-day cleanup policy
+is not an automated guarantee until a cleanup task is implemented and tested.
+See [DATABASE.md](./DATABASE.md) for schema and security boundaries and
+[PROD.md](./PROD.md) for the future integration path.

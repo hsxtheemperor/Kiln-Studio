@@ -3,11 +3,10 @@ import { NextResponse } from "next/server";
 import { readJsonBody } from "@/lib/http/read-json";
 import {
   PublicInquirySchema,
+  toInquiryBriefInsert,
   toInquiryInsert,
-  toProjectBriefInsert,
 } from "@/lib/inquiries/schema";
 import { computeProjectPriority } from "@/lib/project-priority";
-import { createProjectBrief } from "@/lib/project-brief";
 import { createPublicInquiry } from "@/lib/supabase/public-inquiry";
 import { checkInquiryRateLimit } from "@/lib/rate-limit/inquiry";
 
@@ -90,35 +89,23 @@ export async function POST(request: Request) {
     clientProfileId = null;
   }
 
-  let inquiryId: string | null = null;
-  try {
-    const saved = await createPublicInquiry({
-      ...toInquiryInsert(parsed.data),
-      ...(clientProfileId ? { client_id: clientProfileId } : {}),
-    });
-    inquiryId = saved.id;
-  } catch {
-    console.error("Inquiry could not be saved.");
-    return NextResponse.json(
-      { error: "We could not save your inquiry. Please try again later." },
-      { status: 503, headers: { "Cache-Control": "no-store" } },
-    );
-  }
-
   try {
     const priority = computeProjectPriority({
       budget_range: parsed.data.budget_range ?? undefined,
       design_complexity: parsed.data.design_complexity ?? undefined,
       timeline: parsed.data.timeline ?? undefined,
     });
-
-    if (inquiryId) {
-      await createProjectBrief(
-        toProjectBriefInsert(inquiryId, parsed.data, priority),
-      );
-    }
+    await createPublicInquiry({
+      ...toInquiryInsert(parsed.data),
+      ...(clientProfileId ? { client_id: clientProfileId } : {}),
+      priority_score: priority.priority_score,
+    }, toInquiryBriefInsert(parsed.data));
   } catch {
-    console.error("Project priority data could not be saved.");
+    console.error("Inquiry and brief could not be saved.");
+    return NextResponse.json(
+      { error: "We could not save your inquiry. Please try again later." },
+      { status: 503, headers: { "Cache-Control": "no-store" } },
+    );
   }
 
   return NextResponse.json(

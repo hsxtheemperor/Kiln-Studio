@@ -19,10 +19,14 @@ export default async function ClientProjectListPage() {
     console.error("Client profile could not be loaded.", profileError.message);
   }
 
+  const clientProfile = !profileError && profileData && typeof profileData === "object" && "full_name" in profileData
+    ? profileData
+    : null;
+
   const { data: primaryCompany, error: companyError } = await authorization.supabase
     .from("client_companies")
     .select("company_name")
-    .eq("client_id", profileData?.id ?? "")
+    .eq("client_id", clientProfile?.id ?? "")
     .eq("is_primary", true)
     .maybeSingle();
 
@@ -30,10 +34,14 @@ export default async function ClientProjectListPage() {
     console.error("Client company could not be loaded.", companyError.message);
   }
 
+  const primaryCompanyData = !companyError && primaryCompany && typeof primaryCompany === "object" && "company_name" in primaryCompany
+    ? primaryCompany
+    : null;
+
   const { data: requests, error: requestsError } = await authorization.supabase
     .from("inquiries")
     .select("*")
-    .eq("client_id", profileData?.id ?? "")
+    .eq("client_id", clientProfile?.id ?? "")
     .order("created_at", { ascending: false });
 
   if (requestsError) {
@@ -56,15 +64,15 @@ export default async function ClientProjectListPage() {
         <div className="detail-meta">
           <div>
             <span>Client</span>
-            <strong>{profileData?.full_name ?? authorization.user.email ?? "Your account"}</strong>
+            <strong>{clientProfile?.full_name ?? authorization.user.email ?? "Your account"}</strong>
           </div>
           <div>
             <span>Email</span>
-            <strong>{profileData?.email ?? authorization.user.email ?? "—"}</strong>
+            <strong>{clientProfile?.email ?? authorization.user.email ?? "—"}</strong>
           </div>
           <div>
             <span>Company</span>
-            <strong>{primaryCompany?.company_name ?? "—"}</strong>
+            <strong>{primaryCompanyData?.company_name ?? "—"}</strong>
           </div>
         </div>
       </div>

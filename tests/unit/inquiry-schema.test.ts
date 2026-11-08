@@ -1,13 +1,22 @@
 import { describe, expect, it } from "vitest";
-import { PublicInquirySchema, toInquiryInsert } from "../../lib/inquiries/schema";
+import {
+  InquiryStatusSchema,
+  PublicInquirySchema,
+  toInquiryInsert,
+} from "../../lib/inquiries/schema";
 
 const validSubmission = {
   name: "  Ada Lovelace  ",
   email: " ADA@EXAMPLE.COM ",
-  project_brief: "  A new product identity  ",
+  project_brief: "  A new project identity  ",
 };
 
 describe("PublicInquirySchema", () => {
+  it("keeps inquiry acceptance distinct from project lifecycle status", () => {
+    expect(InquiryStatusSchema.parse("accepted")).toBe("accepted");
+    expect(InquiryStatusSchema.safeParse("project").success).toBe(false);
+  });
+
   it("normalizes required fields and maps omitted optional fields to null", () => {
     const parsed = PublicInquirySchema.parse(validSubmission);
     expect(parsed.name).toBe("Ada Lovelace");
@@ -17,7 +26,7 @@ describe("PublicInquirySchema", () => {
       email: "ada@example.com",
       company: null,
       service: null,
-      project_brief: "A new product identity",
+      project_brief: "A new project identity",
       budget_range: null,
       timeline: null,
     });

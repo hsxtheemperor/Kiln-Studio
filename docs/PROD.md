@@ -1,95 +1,99 @@
-# Production plan: Slack-first studio communication and project sync
+# Production direction: durable team collaboration and Slack integration
 
-This document outlines the production upgrade path for the team communication layer. The current demo uses a simple embedded chat object inside the admin and designer workflows. The production version can evolve to include real Slack-based coordination and durable project communication.
+The current embedded Team chat is a local-state demo, not a production chat
+system. Production work should first establish durable project membership,
+authorization, and message storage in the application. Slack integration can
+then be added as an external collaboration surface without making Slack the
+source of truth for project permissions.
 
-## Recommended production direction
+## Recommended source of truth
 
-The best long-term architecture is a hybrid system:
+- Kiln Studio's database owns inquiries, projects, assignments, canonical roles,
+  channel membership, message references, and workflow status.
+- The application enforces access through trusted server-side identity checks,
+  database RLS, and audited service operations.
+- Slack is an optional transport/collaboration surface synchronized through a
+  controlled integration.
 
-- the website remains the primary client and project management surface
-- Slack becomes the team communication layer for real-time conversations
-- project messages and assignments are stored in the app database for cross-system consistency
-- employee identity and team roles are mapped between the app and Slack
+The existing schema is only a starting point: assignments/channels are currently
+based partly on legacy inquiry links; new projects now have project-scoped
+memberships and dedicated channels. Canonical enum casing differs between SQL
+and TypeScript, and the Team UI is not connected to the tables. Resolve these
+before adding Slack.
 
-This keeps the product intuitive for clients and gives the studio a familiar communication tool for internal team work.
+## Staged approach
 
-## Option A: MVP embedded chat (current demo)
+### Stage 1: Make the in-app workflow real
 
-Use this for the prototype and early validation:
+1. Introduce or confirm a first-class `projects` entity and its inquiry lifecycle.
+2. Normalize project roles, availability, channel types, and member roles across
+   application and database.
+3. Add transaction-backed assignment and channel membership services.
+4. Enforce PM/admin boundaries and membership-based message history access in
+   PostgreSQL and server routes.
+5. Connect availability, team views, channel membership, and persistent messages
+   to the database.
+6. Add tests for authorization, synchronization, revocation, and failure cases.
 
-- built directly into the admin/designer dashboard
-- no external API dependencies
-- fast to ship and easy to demo
-- enough to validate team collaboration UX
+### Stage 2: Integrate Slack
 
-This is the right move for a product demo because it reduces complexity and gets feedback quickly.
+- Create a Slack app with only the required scopes and an explicit workspace
+  installation process.
+- Map Kiln Studio users to Slack user IDs using verified OAuth identity; do not
+  assume matching email alone is sufficient.
+- Create or map a Slack channel per eligible project and store its workspace and
+  channel IDs in the database.
+- Send app messages to Slack through a server-side integration worker.
+- Receive Slack events through a public webhook endpoint that verifies Slack's
+  request signature and timestamp before processing.
+- Persist an idempotency key/event ID and provider message ID to deduplicate
+  retries and prevent sync loops.
+- Track delivery/sync state and retries; surface failed syncs instead of
+  silently losing messages.
+- Keep provider credentials in server-side secret storage.
 
-## Option B: Slack sync production architecture
+## Two-way message flow
 
-Once the workflow is validated, move to a Slack-backed communication plan.
+```text
+Kiln Studio composer → authorized app API → database/outbox → Slack API
+Slack event webhook → signature verification → dedupe → database → app UI
+```
 
-### Core idea
+Treat sync as an asynchronous, retryable pipeline. Do not make a client-facing
+inquiry submission depend on Slack availability. Preserve authorship, timestamps,
+thread relationships, edit/delete semantics, and failure status deliberately.
 
-- the website posts a message to a Slack channel when a project is discussed internally
-- the website can also ingest new Slack messages and persist them into the app database
-- a project has a channel, thread, or message stream associated with it
-- team members can be mapped to Slack users by user ID or email
+## Identity, channels, and permissions
 
-### Two-way sync flow
+- OAuth should establish a verified app-user-to-Slack-user mapping.
+- SCIM is optional and depends on Slack plan/admin approval; it is not required
+  merely to attribute messages.
+- Keep app roles and project permissions authoritative in Kiln Studio.
+- A Slack channel does not itself grant app access. Before displaying messages
+  in the website, check current project membership.
+- On membership removal, revoke app access immediately and define the desired
+  Slack channel removal/archive behavior.
+- General and announcement channels should be managed explicitly and have
+  permissions consistent with the in-app rules.
+- Audit project manager changes, membership changes, token installation, and
+  message synchronization events.
+- Preserve `system_activity_logs` as the audit source of truth; project and
+  Slack message events should link to projects and must not expose private
+  inquiry/profile values through the global System feed.
 
-1. A project conversation starts on the website.
-2. The app sends the message to the matching Slack channel or thread.
-3. A team member replies in Slack.
-4. Slack webhooks push the message back to the app.
-5. The app persists it against the matching project record.
-6. Staff and designers see the same timeline from both interfaces.
+## Operational and security requirements
 
-### Identity and account sync
+- Verify Slack signatures using the raw request body and protect against replay.
+- Request the smallest feasible OAuth scopes and document why each is needed.
+- Encrypt provider tokens at rest and rotate/revoke them on uninstall.
+- Implement durable event deduplication, retries, backoff, dead-letter handling,
+  and reconciliation for missed events.
+- Avoid logging message contents or credentials unless an explicit retention
+  policy requires it.
+- Test unauthorized users, project-to-channel mapping errors, Slack outages,
+  duplicate events, revoked tokens, and webhook retries.
+- Obtain workspace owner/admin approval and satisfy Slack's review requirements
+  before broad distribution.
 
-To keep team messages clear and accurate, map website users to Slack users:
-
-- a website employee record should store Slack user IDs or workspace IDs
-- Slack OAuth or SCIM can be used for identity sync
-- message attribution should use the real employee identity instead of a generic bot name
-- roles and permissions still remain enforced by the app's server-side auth layer
-
-### Channel strategy
-
-Use a practical channel structure such as:
-
-- project-specific channels for active work
-- a studio-wide announcements channel
-- a client-facing communication channel only when the client is approved for direct contact
-- a private design review channel for internal comments
-
-### Implementation pattern
-
-Recommended production pipeline:
-
-- app database stores project and message records
-- Slack app receives events through webhooks and OAuth
-- secure server route handlers validate incoming payloads
-- message sync is idempotent and deduplicated
-- the app keeps a sync status flag for each message or thread
-
-## Security concerns to plan for
-
-Production integration requires careful controls:
-
-- secure Slack app credentials in environment variables
-- strict verification of Slack signatures
-- separate service accounts for bot behavior
-- permission scopes limited to what the app actually needs
-- audit logs for message sync events and failed payloads
-- avoid exposing token secrets to the browser
-
-## Best long-term architecture
-
-The recommended end-state is:
-
-- website handles project management, client views, and internal team workflows
-- Slack is used as the real-time team communication surface
-- the app database remains the source of truth for project records, messages, user metadata, and workflow state
-- sync is implemented as a reliable, reversible event pipeline instead of direct one-off message writes
-
-This is the right production upgrade path because it keeps the product simple for clients while preserving a familiar communication layer for the design team.
+Slack API, OAuth/SCIM provisioning, webhook ingestion, and bidirectional sync
+are future work; none is currently implemented.

@@ -44,7 +44,7 @@ describe("POST /api/inquiries", () => {
       createRequest({
         name: "Ada Lovelace",
         email: "ada@example.com",
-        project_brief: "A new product identity",
+        project_brief: "A new project identity",
         website: "",
       }),
     );
@@ -58,9 +58,18 @@ describe("POST /api/inquiries", () => {
       email: "ada@example.com",
       company: null,
       service: null,
-      project_brief: "A new product identity",
+      project_brief: "A new project identity",
       budget_range: null,
       timeline: null,
+      priority_score: 0,
+    }, {
+      design_goal: "",
+      brand_message: "",
+      target_audience: null,
+      desired_outcomes: null,
+      references: null,
+      time_budget: null,
+      design_complexity: null,
     });
   });
 
@@ -89,7 +98,7 @@ describe("POST /api/inquiries", () => {
       createRequest({
         name: "Ada Lovelace",
         email: "ada@example.com",
-        project_brief: "A new product identity",
+        project_brief: "A new project identity",
       }),
     );
 
@@ -105,7 +114,7 @@ describe("POST /api/inquiries", () => {
       createRequest({
         name: "Ada Lovelace",
         email: "ada@example.com",
-        project_brief: "A new product identity",
+        project_brief: "A new project identity",
       }),
     );
 

@@ -39,6 +39,7 @@ export async function GET(request: Request) {
   let inquiryQuery = authorization.supabase
     .from("inquiries")
     .select("*", { count: "exact" })
+    .order("priority_score", { ascending: false })
     .order("created_at", { ascending: false })
     .order("id", { ascending: false })
     .range(start, end);
@@ -56,41 +57,8 @@ export async function GET(request: Request) {
     );
   }
 
-  const inquiryIds = (data ?? []).map((inquiry) => inquiry.id).filter(Boolean);
-  let projectBriefs: Array<{ inquiry_id: string; priority_score: number | null; priority_label: string | null }> = [];
-
-  if (inquiryIds.length > 0) {
-    const { data: briefData, error: briefError } = await authorization.supabase
-      .from("project_briefs")
-      .select("inquiry_id, priority_score, priority_label")
-      .in("inquiry_id", inquiryIds);
-
-    if (briefError) {
-      console.error("Admin inquiry priority list could not be loaded.", briefError.message);
-    } else {
-      projectBriefs = briefData ?? [];
-    }
-  }
-
-  const priorityLookup = new Map(
-    projectBriefs.map((brief) => [brief.inquiry_id, brief]),
-  );
-
-  const prepared = (data ?? []).map((inquiry) => ({
-    ...inquiry,
-    project_briefs: priorityLookup.has(inquiry.id)
-      ? [priorityLookup.get(inquiry.id)]
-      : [],
-  }));
-
-  prepared.sort((left, right) => {
-    const leftPriority = left.project_briefs[0]?.priority_score ?? 0;
-    const rightPriority = right.project_briefs[0]?.priority_score ?? 0;
-    return rightPriority - leftPriority;
-  });
-
   return NextResponse.json(
-    { items: prepared, page, pageSize, totalCount: count ?? 0 },
+    { items: data ?? [], page, pageSize, totalCount: count ?? 0 },
     { headers: { "Cache-Control": "no-store" } },
   );
 }

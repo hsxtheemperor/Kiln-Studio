@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { InquiryInsert, ProjectBriefInsert } from "../supabase/database.types";
+import type { InquiryBriefInsert, InquiryInsert } from "../supabase/database.types";
 
 export const INQUIRY_SERVICES = [
   "brand_identity",
@@ -19,6 +19,7 @@ export const INQUIRY_BUDGET_RANGES = [
 export const INQUIRY_STATUSES = [
   "new",
   "contacted",
+  "accepted",
   "in_progress",
   "closed",
 ] as const;
@@ -86,13 +87,10 @@ export function toInquiryInsert(input: PublicInquiryInput): InquiryInsert {
   };
 }
 
-export function toProjectBriefInsert(
-  inquiryId: string,
+export function toInquiryBriefInsert(
   input: PublicInquiryInput,
-  priority: { priority_score: number; priority_label: string },
-): ProjectBriefInsert {
+): Omit<InquiryBriefInsert, "inquiry_id"> {
   return {
-    inquiry_id: inquiryId,
     design_goal: input.design_goal ?? "",
     brand_message: input.brand_message ?? "",
     target_audience: input.target_audience ?? null,
@@ -100,7 +98,5 @@ export function toProjectBriefInsert(
     references: input.references ?? null,
     time_budget: input.time_budget ?? null,
     design_complexity: input.design_complexity ?? null,
-    priority_score: priority.priority_score,
-    priority_label: priority.priority_label,
   };
 }

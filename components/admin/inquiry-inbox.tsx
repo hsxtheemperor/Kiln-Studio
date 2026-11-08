@@ -4,13 +4,9 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import type { InquiryRow, InquiryStatus } from "@/lib/supabase/database.types";
 import { INQUIRY_STATUSES } from "@/lib/inquiries/schema";
+import { getPriorityLabel } from "@/lib/project-priority";
 
-type InquiryListItem = InquiryRow & {
-  project_briefs?: Array<{
-    priority_label?: string | null;
-    priority_score?: number | null;
-  }>;
-};
+type InquiryListItem = InquiryRow;
 
 type ListResponse = {
   items: InquiryListItem[];
@@ -22,6 +18,7 @@ type ListResponse = {
 const statusLabels: Record<InquiryStatus, string> = {
   new: "New",
   contacted: "Contacted",
+  accepted: "Accepted",
   in_progress: "In progress",
   closed: "Closed",
 };
@@ -143,9 +140,7 @@ export function InquiryInbox() {
             </thead>
             <tbody>
               {items.map((inquiry) => {
-                const priority = inquiry.project_briefs?.[0];
-                const priorityLabel = priority?.priority_label ?? "unknown";
-                const priorityScore = priority?.priority_score ?? 0;
+                const priorityLabel = getPriorityLabel(inquiry.priority_score);
 
                 return (
                   <tr key={inquiry.id}>
@@ -159,7 +154,7 @@ export function InquiryInbox() {
                     <td>{formatDate(inquiry.created_at)}</td>
                     <td>
                       <span className="status-pill" data-status={priorityLabel}>
-                        {priorityLabel} · {priorityScore}/10
+                        {priorityLabel} · {inquiry.priority_score}/10
                       </span>
                     </td>
                     <td>

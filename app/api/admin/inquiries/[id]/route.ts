@@ -5,7 +5,13 @@ import { InquiryStatusSchema } from "@/lib/inquiries/schema";
 import { readJsonBody } from "@/lib/http/read-json";
 
 const IdSchema = z.string().uuid();
-const UpdateSchema = z.object({ status: InquiryStatusSchema }).strict();
+const UpdateSchema = z
+  .object({
+    status: InquiryStatusSchema.optional(),
+    priority_score: z.number().int().min(0).max(10).optional(),
+  })
+  .strict()
+  .refine((value) => value.status !== undefined || value.priority_score !== undefined);
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -45,8 +51,8 @@ export async function GET(_request: Request, { params }: RouteContext) {
   }
 
   const { data: briefData, error: briefError } = await authorization.supabase
-    .from("project_briefs")
-    .select("id, inquiry_id, priority_score, priority_label, design_goal, brand_message, target_audience, desired_outcomes, references, time_budget, design_complexity")
+    .from("inquiry_briefs")
+    .select("id, inquiry_id, design_goal, brand_message, target_audience, desired_outcomes, references, time_budget, design_complexity")
     .eq("inquiry_id", id)
     .maybeSingle();
 
@@ -54,8 +60,30 @@ export async function GET(_request: Request, { params }: RouteContext) {
     console.error("Admin inquiry priority detail could not be loaded.", briefError.message);
   }
 
+  const safeBriefData: Array<{
+    id: string;
+    inquiry_id: string;
+    design_goal: string;
+    brand_message: string;
+    target_audience: string | null;
+    desired_outcomes: string | null;
+    references: string | null;
+    time_budget: string | null;
+    design_complexity: number | null;
+  }> = briefData ? [briefData as typeof briefData & {
+    id: string;
+    inquiry_id: string;
+    design_goal: string;
+    brand_message: string;
+    target_audience: string | null;
+    desired_outcomes: string | null;
+    references: string | null;
+    time_budget: string | null;
+    design_complexity: number | null;
+  }] : [];
+
   return NextResponse.json(
-    { item: { ...data, project_briefs: briefData ? [briefData] : [] } },
+    { item: { ...data, inquiry_briefs: safeBriefData } },
     { headers: { "Cache-Control": "no-store" } },
   );
 }
@@ -77,7 +105,7 @@ export async function PATCH(request: Request, { params }: RouteContext) {
   const parsed = UpdateSchema.safeParse(body.value);
   if (!parsed.success) {
     return NextResponse.json(
-      { error: "Only a valid inquiry status can be updated." },
+      { error: "A valid inquiry status or priority score is required." },
       { status: 400, headers: { "Cache-Control": "no-store" } },
     );
   }
@@ -89,15 +117,15 @@ export async function PATCH(request: Request, { params }: RouteContext) {
 
   const { data, error } = await authorization.supabase
     .from("inquiries")
-    .update({ status: parsed.data.status })
+    .update(parsed.data)
     .eq("id", id)
     .select("id")
     .maybeSingle();
 
   if (error) {
-    console.error("Admin inquiry status could not be updated.");
+    console.error("Admin inquiry could not be updated.");
     return NextResponse.json(
-      { error: "The inquiry status could not be updated." },
+      { error: "The inquiry could not be updated." },
       { status: 503, headers: { "Cache-Control": "no-store" } },
     );
   }
@@ -110,7 +138,7 @@ export async function PATCH(request: Request, { params }: RouteContext) {
   }
 
   return NextResponse.json(
-    { message: "Inquiry status updated." },
+    { message: "Inquiry updated." },
     { headers: { "Cache-Control": "no-store" } },
   );
 }

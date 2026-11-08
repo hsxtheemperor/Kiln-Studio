@@ -21,7 +21,12 @@ export async function createSupabaseSessionClient() {
       },
       setAll(cookiesToSet) {
         cookiesToSet.forEach(({ name, value, options }) => {
-          cookieStore.set(name, value, options);
+          try {
+            cookieStore.set(name, value, options);
+          } catch {
+            // Server Components may read the session, but not mutate it here;
+            // Supabase refreshes can be safely ignored until a route/action runs.
+          }
         });
       },
     },

@@ -4,11 +4,10 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import type { InquiryRow, InquiryStatus } from "@/lib/supabase/database.types";
 import { INQUIRY_STATUSES } from "@/lib/inquiries/schema";
+import { PRIORITY_MAX, PRIORITY_UNKNOWN, getPriorityLabel } from "@/lib/project-priority";
 
 type InquiryDetailPayload = InquiryRow & {
-  project_briefs?: Array<{
-    priority_score: number | null;
-    priority_label: string | null;
+  inquiry_briefs?: Array<{
     design_goal: string | null;
     brand_message: string | null;
     target_audience: string | null;
@@ -30,6 +29,7 @@ const priorityTone: Record<string, string> = {
 const statusLabels: Record<InquiryStatus, string> = {
   new: "New",
   contacted: "Contacted",
+  accepted: "Accepted - project created",
   in_progress: "In progress",
   closed: "Closed",
 };
@@ -42,7 +42,7 @@ function formatDate(value: string) {
 }
 
 export function InquiryDetail({ id }: { id: string }) {
-  const [inquiry, setInquiry] = useState<InquiryRow | null>(null);
+  const [inquiry, setInquiry] = useState<InquiryDetailPayload | null>(null);
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -114,9 +114,40 @@ export function InquiryDetail({ id }: { id: string }) {
     }
   }
 
-  const brief = inquiry ? ((inquiry as InquiryDetailPayload).project_briefs ?? [])[0] : undefined;
-  const priorityLabel = brief?.priority_label ?? "unknown";
-  const priorityScore = brief?.priority_score ?? 0;
+  async function updatePriority(priority_score: number) {
+    if (!inquiry) return;
+    setIsSaving(true);
+    setError("");
+
+    try {
+      const response = await fetch(`/api/admin/inquiries/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ priority_score }),
+      });
+      const payload: unknown = await response.json();
+      if (!response.ok) {
+        const message =
+          typeof payload === "object" &&
+          payload !== null &&
+          "error" in payload &&
+          typeof payload.error === "string"
+            ? payload.error
+            : "The priority score could not be updated.";
+        setError(message);
+        return;
+      }
+
+      setInquiry({ ...inquiry, priority_score });
+    } catch {
+      setError("Could not reach the server. Please try again.");
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  const brief = inquiry?.inquiry_briefs?.[0];
+  const priorityLabel = inquiry ? getPriorityLabel(inquiry.priority_score) : "unknown";
 
   if (isLoading) {
     return <div className="admin-main"><p className="loading-state" role="status">Loading inquiry…</p></div>;
@@ -185,8 +216,20 @@ export function InquiryDetail({ id }: { id: string }) {
               <div>
                 <span>Priority</span>
                 <strong className={`status-pill ${priorityTone[priorityLabel] ?? "neutral"}`} data-status={inquiry.status}>
-                  {priorityLabel} · {priorityScore}/10
+                  {priorityLabel} · {inquiry.priority_score}/10
                 </strong>
+                <label className="sr-only" htmlFor="inquiry-priority">Override priority score</label>
+                <select
+                  id="inquiry-priority"
+                  aria-label="Override priority score"
+                  value={inquiry.priority_score}
+                  disabled={isSaving}
+                  onChange={(event) => void updatePriority(Number(event.target.value))}
+                >
+                  {Array.from({ length: PRIORITY_MAX - PRIORITY_UNKNOWN + 1 }, (_, score) => (
+                    <option key={score} value={score}>{score === PRIORITY_UNKNOWN ? "Unknown" : `${score}/10`}</option>
+                  ))}
+                </select>
               </div>
               <div>
                 <span>Design complexity</span>
