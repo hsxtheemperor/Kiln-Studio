@@ -22,18 +22,20 @@ Studio browser
   │    └─ project operations: PM assignment, deadlines, completion, channel ordering
   └─ Designer sign-in → designer or studio_member app_metadata
        ├─ priority queue and inquiry message room
-       └─ Team page (currently sample data/local chat state)
+       └─ Team page with live project membership and persistent channel messages
 
 Next.js server and Route Handlers
   └─ Supabase Auth/Postgres; cookie-bound client for user-scoped operations
        ├─ inquiry and extended-brief RPC
        ├─ project lifecycle and system activity triggers
+       ├─ authenticated project-membership and channel-message writes
        └─ database-only finance and quarterly-report schema
 ```
 
 The browser UI is not a security boundary. Server-side auth checks and database
-RLS must protect private data. The team tables/migrations are an initial data
-model, not proof that the current Team page uses live database data.
+RLS must protect private data. Project membership and channel history are
+loaded through the user's Supabase session; message writes, membership changes,
+and project management remain subject to database policies.
 
 ## Route groups
 
@@ -44,7 +46,7 @@ Next.js route groups organize layouts without adding URL prefixes.
 | `app/(public)/` | Public site, inquiry form, client sign-in/up, and client request pages. |
 | `app/(admin)/admin/` | Studio-member dashboard, inquiry management, and Team view. |
 | `app/(designer)/designer/` | Designer priority queue, inquiry room, and Team view. |
-| `app/api/` | Server-side inquiry, auth, admin-inquiry, and designer-message handlers. |
+| `app/api/` | Server-side inquiry, auth, admin-inquiry, designer-message, and project collaboration handlers. |
 
 ## Important files
 
@@ -60,10 +62,11 @@ Next.js route groups organize layouts without adding URL prefixes.
 | `components/inquiry/confirmation-gate.tsx` | Prevents direct access from appearing to confirm an unsaved request. |
 | `app/(public)/account/` and `components/client/` | Client auth forms and request-list/detail views. |
 | `app/(admin)/admin/page.tsx` | Loads and renders the admin dashboard. |
-| `components/admin/admin-dashboard.tsx` | Inquiry summary, top priority, latest inquiries, and team overview currently backed in part by sample roster content. |
+| `components/admin/admin-dashboard.tsx` | Inquiry summary, top priority, latest inquiries, live system activity, and team overview. |
 | `components/admin/admin-frame.tsx` | Admin shell/navigation and sign-out UI. |
+| `components/admin/activity-feed.tsx` | Admin-only initial activity list and live Supabase Realtime subscription, rendered with RLS-protected session data. |
 | `components/admin/inquiry-inbox.tsx`, `inquiry-detail.tsx` | Inquiry list/filter/pagination and status update UI. |
-| `components/team/team-workspace.tsx` | Team roster, assignments, channel preview, and local-state demo chat. |
+| `components/team/team-workspace.tsx` | Active team directory, project membership management, and persisted project-channel conversations. |
 | `components/designer/designer-project-room.tsx` | Designer/client-request message interface. |
 
 ### API and shared server logic
@@ -76,11 +79,16 @@ Next.js route groups organize layouts without adding URL prefixes.
 | `app/api/designer/auth/route.ts` | Designer/studio-member sign-in gate. |
 | `app/api/admin/inquiries/route.ts`, `[id]/route.ts` | Protected inquiry list/detail and status/priority updates. |
 | `app/api/designer/messages/route.ts` | Protected inquiry-linked designer message reads/writes. |
+| `app/api/projects/[id]/members/route.ts` | Adds and removes project team members using the authenticated session; RLS authorizes administrators/project managers. |
+| `app/api/projects/[id]/messages/route.ts` | Persists project-channel messages with sender identity derived from the authenticated team profile. |
+| `lib/studio/project-channels.ts` | Loads RLS-filtered ordered project channels, current memberships, and recent channel messages. |
 | `lib/inquiries/schema.ts` | Inquiry options, validation, normalization, and database insert mapping. |
 | `lib/project-priority.ts` | Priority score and label computation. |
 | `lib/studio/constants.ts` | UI constants/types for availability, roles, channels, and labels. |
 | `lib/auth/require-*.ts` | Cookie-bound session verification and access-level checks. |
 | `lib/supabase/session.ts` | Supabase server client and cookie adapter. In Server Components, cookie refresh writes may not be applied; writable cookie operations belong in Route Handlers/Actions. |
+| `lib/supabase/browser.ts` | Cookie-bound browser Supabase client for authenticated Realtime subscriptions. |
+| `lib/studio/activity-feed.ts` | Safe audit-event summaries and bounded/deduplicated feed merging. |
 | `lib/supabase/public-inquiry.ts` | Narrow server-only call to the database RPC that creates an inquiry and extended brief atomically. |
 | `lib/rate-limit/inquiry.ts`, `lib/http/read-json.ts` | Shared rate limit and bounded JSON parsing. |
 
@@ -101,6 +109,8 @@ Next.js route groups organize layouts without adding URL prefixes.
 | `supabase/migrations/20261108030000_allow_project_brief_upserts.sql` | Adds the service-role SELECT privilege required for project-brief upserts. |
 | `supabase/migrations/20261108040000_enforce_message_sender_identity.sql` | Enforces message sender identity and retains the archived-channel posting lock. |
 | `supabase/migrations/20261108050000_align_inquiry_priority_and_finance.sql` | Renames briefs to `inquiry_briefs`, moves priority onto inquiries, restricts the activity feed to studio members, and adds normalized finance and quarterly-report tables/functions. |
+| `supabase/migrations/20261108060000_enable_system_activity_realtime.sql` | Adds the RLS-protected system activity table to Supabase Realtime publication. |
+| `supabase/migrations/20261108070000_restrict_membership_changes_to_active_projects.sql` | Prevents adding or changing project roles after completion while preserving membership removal for access revocation. |
 | `supabase/tests/` | pgTAP coverage for inquiry priority/atomic writes, project lifecycle and RLS, finance/report behavior, grants, team roles, and channel rules. |
 | `.github/workflows/ci.yml` | Runs application tests/typecheck/build and clean local Supabase migration, lint, and pgTAP checks on PRs and pushes to `main`; no deployment. |
 | `lib/supabase/database.types.ts` | Application-side Supabase row/insert types. |
@@ -125,17 +135,16 @@ client account/profile flows, admin inquiry reads and status/priority updates,
 and designer inquiry messaging (subject to the deployed Supabase policies and
 configuration).
 
-**Not yet connected as a live Team system:** the roster/availability UI,
-assignment display, regular Team messages, and project team editing UI. The
-latest migration creates a project and project channel when an admin changes an
-inquiry to `accepted`, enforces admin-only PM changes, and synchronizes project
-memberships with project-channel memberships. The Team page exposes admin PM
-assignment, deadline editing, PM-only completion, and the ordered project
-channel list. A project completion requires its PM, then archives the channel
-against new messages while retaining history for current channel members.
-Project channels are ranked by priority descending, then nearest deadline via
-`list_project_channels()`. Project membership editing remains unconnected. See
-[DATABASE.md](./DATABASE.md) and [PLAN.md](./PLAN.md).
+The Team page shows the active team directory and RLS-filtered project channels.
+Admins assign project managers; admins and project managers can add/remove
+project members and assign supported project roles. Project messages are stored
+in PostgreSQL and the page loads up to the latest 100 messages per visible
+channel. Project completion requires its PM, archives the channel against new
+messages, and retains history only for current members. Project channels are
+ranked by priority descending, then nearest deadline via
+`list_project_channels()`. Availability editing, general/announcement chat,
+message pagination, and channel-message realtime updates are not implemented.
+See [DATABASE.md](./DATABASE.md) and [PLAN.md](./PLAN.md).
 
 Project channel descriptions are generated from the related inquiry and brief
 and refreshed if inquiry/brief details change. System audit events record the
@@ -146,8 +155,9 @@ activity channel.
 listed operational tables as audit events containing table, row ID, operation,
 changed column names, actor, and timestamp. It intentionally does not copy
 before/after values (which may contain client data). Only studio members can
-read these events; the system channel is event-only and the UI to render its
-feed remains pending.
+read these events. The admin dashboard loads the newest 25 events and subscribes
+to inserts over Supabase Realtime; the browser session remains subject to RLS.
+The System channel is event-only and is not a chat composer.
 
 **Finance:** normalized revenue, payout, expense, recurring-expense, and
 quarterly-report tables plus database totals/publishing functions are present.

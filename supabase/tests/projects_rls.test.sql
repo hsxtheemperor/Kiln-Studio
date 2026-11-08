@@ -1,6 +1,6 @@
 BEGIN;
 
-SELECT plan(38);
+SELECT plan(41);
 
 SELECT set_config(
   'request.jwt.claims',
@@ -136,6 +136,17 @@ SELECT throws_ok(
   'a project can have only one project-manager role'
 );
 
+SELECT set_config(
+  'test.project_channel_one',
+  (SELECT id::text FROM public.project_channels WHERE project_id = (SELECT id FROM public.projects WHERE inquiry_id = '30000000-0000-0000-0000-000000000001')),
+  true
+);
+SELECT set_config(
+  'test.project_channel_two',
+  (SELECT id::text FROM public.project_channels WHERE project_id = (SELECT id FROM public.projects WHERE inquiry_id = '30000000-0000-0000-0000-000000000002')),
+  true
+);
+
 SET LOCAL ROLE authenticated;
 SELECT set_config(
   'request.jwt.claims',
@@ -165,6 +176,41 @@ SELECT is(
    WHERE projects.inquiry_id = '30000000-0000-0000-0000-000000000001'),
   1::bigint,
   'a project manager can read their own channel history'
+);
+
+INSERT INTO public.project_channel_messages (
+  channel_id, sender_member_id, sender_name, sender_role, body
+)
+VALUES (
+  current_setting('test.project_channel_one')::uuid,
+  '20000000-0000-0000-0000-000000000001',
+  'Project PM One',
+  'PROJECT_MANAGER',
+  'A durable project update'
+);
+
+SELECT is(
+  (SELECT count(*) FROM public.project_channel_messages
+   WHERE channel_id = current_setting('test.project_channel_one')::uuid
+     AND body = 'A durable project update'),
+  1::bigint,
+  'a project manager can persist a message in their own channel'
+);
+
+SELECT throws_ok(
+  $$ INSERT INTO public.project_channel_messages (
+       channel_id, sender_member_id, sender_name, sender_role, body
+     )
+     VALUES (
+       current_setting('test.project_channel_two')::uuid,
+       '20000000-0000-0000-0000-000000000001',
+       'Project PM One',
+       'PROJECT_MANAGER',
+       'Cross-project message'
+     ) $$,
+  '42501',
+  NULL,
+  'a project manager cannot post to another project channel'
 );
 
 INSERT INTO public.project_members (project_id, team_member_id, role_name)
@@ -302,7 +348,7 @@ SELECT is(
    JOIN public.project_channels AS channels ON channels.id = messages.channel_id
    JOIN public.projects ON projects.id = channels.project_id
    WHERE projects.inquiry_id = '30000000-0000-0000-0000-000000000001'),
-  1::bigint,
+  2::bigint,
   'current members retain read access to archived history'
 );
 
@@ -315,6 +361,15 @@ SELECT throws_ok(
   '42501',
   NULL,
   'archived project channels reject new messages'
+);
+
+SELECT throws_ok(
+  $$ INSERT INTO public.project_members (project_id, team_member_id, role_name)
+     SELECT id, '20000000-0000-0000-0000-000000000005', 'DESIGNER'
+     FROM public.projects WHERE inquiry_id = '30000000-0000-0000-0000-000000000001' $$,
+  '42501',
+  NULL,
+  'completed projects cannot gain new members'
 );
 
 DELETE FROM public.project_members

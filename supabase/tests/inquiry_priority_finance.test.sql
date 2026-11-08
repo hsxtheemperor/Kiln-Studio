@@ -78,6 +78,16 @@ SELECT ok(
   ),
   'only service role can execute the public inquiry persistence RPC'
 );
+SELECT ok(
+  EXISTS (
+    SELECT 1
+    FROM pg_catalog.pg_publication_tables
+    WHERE pubname = 'supabase_realtime'
+      AND schemaname = 'public'
+      AND tablename = 'system_activity_logs'
+  ),
+  'system activity logs are included in the Realtime publication'
+);
 
 SELECT ok(
   NOT EXISTS (

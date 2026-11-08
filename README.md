@@ -6,6 +6,13 @@ inquiries, client request tracking, studio/designer workspaces, prioritization,
 and an early team collaboration interface. It is not a real studio; inquiries
 are synthetic/demo data and are not monitored as client leads.
 
+## About
+
+Kiln Studio is a fictional design-studio portfolio and operations demo built to
+show a realistic inquiry-to-project workflow, live admin views, and a durable
+team collaboration foundation. The app is intentionally synthetic and designed to
+be easy to explain in a recruiter-facing walkthrough.
+
 ## What is implemented
 
 - Public home, services, concept-work, and multi-step inquiry experience.
@@ -24,6 +31,8 @@ are synthetic/demo data and are not monitored as client leads.
   leaves its history available to existing members.
 - Project channels are ordered by inquiry priority (highest first), then nearest
   deadline; only studio members can read the system activity feed.
+- The admin dashboard shows the latest system activity and streams new database
+  audit events live through Supabase Realtime.
 - Designer priority queue, client-request detail, and request-message endpoint.
 - A separate Team page for admin and designer workspaces, with sample roster,
   assignments, availability, channel previews, and local-in-browser demo chat.
@@ -34,8 +43,8 @@ are synthetic/demo data and are not monitored as client leads.
 
 The Team roster and chat UI still use in-memory sample data. The live Team page
 loads ordered project channels and exposes admin PM/deadline controls and
-PM-only completion. Project-team assignment editing and the activity-log reader UI are not yet
-connected. Finance tables and database functions exist but do not yet have a
+PM-only completion. Project-team assignment editing is not yet connected.
+Finance tables and database functions exist but do not yet have a
 finance UI/workflow. Legacy finance summaries remain pending data reconciliation.
 See
 [docs/DEMO.md](./docs/DEMO.md) and [docs/PLAN.md](./docs/PLAN.md) for details.
@@ -123,6 +132,10 @@ the application tests, type-checks and builds Next.js, then starts a disposable
 local Supabase stack, applies every migration, lints the public schema, and runs
 the pgTAP integration/RLS tests. It uses no hosted Supabase credentials and does
 not deploy.
+
+## License
+
+This project is licensed under the [MIT License](./LICENSE).
 
 ## Documentation
 

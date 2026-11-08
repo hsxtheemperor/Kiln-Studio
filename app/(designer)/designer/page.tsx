@@ -56,8 +56,8 @@ export default async function DesignerHomePage() {
       <header className="admin-header">
         <Link className="admin-brand" href="/designer">
           <strong className="brand-mark">
-            <span className="brand-symbol" aria-hidden="true">k</span>
-            kiln studio
+            <span className="brand-symbol" aria-hidden="true">✦</span>
+            Kiln Studio
           </strong>
           <span>Designer workspace</span>
         </Link>

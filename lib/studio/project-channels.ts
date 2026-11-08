@@ -2,7 +2,9 @@ import "server-only";
 
 import type { createSupabaseSessionClient } from "@/lib/supabase/session";
 import type {
+  ProjectChannelMessageRow,
   ProjectChannelRow,
+  ProjectMemberRow,
   ProjectRow,
   TeamMemberRow,
 } from "@/lib/supabase/database.types";
@@ -19,7 +21,15 @@ export type ProjectChannelView = Omit<ProjectChannelRow, "project_id" | "inquiry
   priority_label: string;
   project_manager_id: string | null;
   is_project_manager: boolean;
+  members: ProjectChannelMemberView[];
+  messages: ProjectChannelMessageRow[];
 };
+
+export type ProjectChannelMemberView = Pick<
+  ProjectMemberRow,
+  "id" | "team_member_id" | "role_name"
+> &
+  Pick<TeamMemberRow, "full_name" | "email">;
 
 type ProjectChannelResult =
   | { channels: ProjectChannelView[]; error: null }
@@ -90,7 +100,79 @@ export async function getProjectChannels(
       priority_label: getPriorityLabel(priority),
       project_manager_id: project.project_manager_id,
       is_project_manager: project.project_manager_id === currentMember?.id,
+      members: [],
+      messages: [],
     });
+  }
+
+  const projectIdsForMembers = [...new Set(mappedChannels.map((channel) => channel.project_id))];
+  const { data: projectMembers, error: projectMembersError } = await supabase
+    .from("project_members")
+    .select("id, project_id, team_member_id, role_name, created_at, updated_at")
+    .in("project_id", projectIdsForMembers);
+
+  if (projectMembersError) {
+    console.error("Project channel memberships could not be loaded.", projectMembersError.message);
+    return { channels: [], error: "Project channel memberships are temporarily unavailable." };
+  }
+
+  const memberIds = [...new Set((projectMembers ?? []).map((member) => member.team_member_id))];
+  const { data: teamMembers, error: teamMembersError } = memberIds.length
+    ? await supabase
+        .from("team_members")
+        .select("id, full_name, email")
+        .in("id", memberIds)
+    : { data: [], error: null };
+
+  if (teamMembersError) {
+    console.error("Project channel member details could not be loaded.", teamMembersError.message);
+    return { channels: [], error: "Project channel members are temporarily unavailable." };
+  }
+
+  const teamMemberById = new Map((teamMembers ?? []).map((member) => [member.id, member]));
+  const membersByProject = new Map<string, ProjectChannelMemberView[]>();
+  for (const membership of projectMembers ?? []) {
+    const member = teamMemberById.get(membership.team_member_id);
+    if (!member) continue;
+    const members = membersByProject.get(membership.project_id) ?? [];
+    members.push({
+      id: membership.id,
+      team_member_id: membership.team_member_id,
+      role_name: membership.role_name,
+      full_name: member.full_name,
+      email: member.email,
+    });
+    membersByProject.set(membership.project_id, members);
+  }
+
+  const channelMessages = await Promise.all(
+    mappedChannels.map(async (channel) => {
+      const { data, error } = await supabase
+        .from("project_channel_messages")
+        .select("id, channel_id, sender_member_id, sender_name, sender_role, body, message_source, created_at")
+        .eq("channel_id", channel.id)
+        .order("created_at", { ascending: false })
+        .limit(100);
+      return { channelId: channel.id, messages: data ?? [], error };
+    }),
+  );
+
+  const messageError = channelMessages.find((result) => result.error)?.error;
+  if (messageError) {
+    console.error("Project channel messages could not be loaded.", messageError.message);
+    return { channels: [], error: "Project channel messages are temporarily unavailable." };
+  }
+
+  const messagesByChannel = new Map(
+    channelMessages.map((result) => [
+      result.channelId,
+      [...result.messages].reverse(),
+    ]),
+  );
+
+  for (const channel of mappedChannels) {
+    channel.members = membersByProject.get(channel.project_id) ?? [];
+    channel.messages = messagesByChannel.get(channel.id) ?? [];
   }
 
   return {
@@ -99,4 +181,7 @@ export async function getProjectChannels(
   };
 }
 
-export type ProjectManagerOption = Pick<TeamMemberRow, "id" | "full_name" | "email">;
+export type ProjectManagerOption = Pick<
+  TeamMemberRow,
+  "id" | "full_name" | "email" | "title" | "specialty" | "availability_status"
+>;

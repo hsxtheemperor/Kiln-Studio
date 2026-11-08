@@ -32,7 +32,7 @@ state.
   status and priority updates.
 - [x] Designer sign-in, priority queue, request detail, and inquiry message API.
 - [x] Admin dashboard overview and distinct admin/designer Team routes.
-- [x] Supabase Speed Insights package and root-layout integration.
+- [x] Vercel Speed Insights package and root-layout integration.
 - [x] Unit/API tests and TypeScript check scripts.
 
 ## Partially implemented / demo-only
@@ -50,8 +50,9 @@ state.
 - [ ] Legacy `project_assignments` remain inquiry-linked for compatibility;
   accepted work now has a first-class `projects` entity and `project_members`.
 - [ ] Finance tables have no complete API, finance UI, or reconciliation flow.
-- [ ] System audit events are stored and readable by studio members only, but
-  there is no system activity feed UI or pagination/retention policy yet.
+- [x] System audit events are stored for studio members and the admin dashboard
+  displays recent events live through Supabase Realtime.
+- [ ] System activity feed pagination and retention policy.
 - [x] Project channels are ordered by priority and deadline through a database
   function used by the Team page.
 - [ ] The dashboard's team overview uses sample team data and therefore does not

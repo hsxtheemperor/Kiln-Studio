@@ -3,7 +3,7 @@
 This document describes the database schema created by the committed migrations,
 the behavior wired to it, and the known gaps between schema and application UI.
 
-Review the production reset warning before applying anything to the hosted
+Review local and private operational notes before applying anything to a hosted
 Kiln-Studio project.
 
 ## Contents
@@ -95,6 +95,12 @@ What that implies for the database:
 - Migration 13 renamed `project_briefs` to `inquiry_briefs` and moved priority
   onto `inquiries`. Other inquiry-scoped tables retain their legacy names for
   compatibility; do not rename applied migration files.
+- Migration 14 adds `system_activity_logs` to the Realtime publication. The
+  admin dashboard uses the cookie-bound Supabase client; Realtime events and
+  history reads remain subject to the studio-member RLS policy.
+- Migration 15 restricts project membership additions and role changes to
+  active projects; membership removal remains available after completion to
+  revoke channel-history access.
 
 ## Data model
 
@@ -153,80 +159,27 @@ operational tables by triggers, not by foreign keys.
 11. [`20261108030000_allow_project_brief_upserts.sql`](../supabase/migrations/20261108030000_allow_project_brief_upserts.sql): grants the service role the table read permission PostgreSQL requires for project-brief upserts.
 12. [`20261108040000_enforce_message_sender_identity.sql`](../supabase/migrations/20261108040000_enforce_message_sender_identity.sql): prevents sender impersonation on inquiry and channel messages and preserves the archived-project-channel write lock.
 13. [`20261108050000_align_inquiry_priority_and_finance.sql`](../supabase/migrations/20261108050000_align_inquiry_priority_and_finance.sql): renames `project_briefs` to `inquiry_briefs`, moves priority to inquiries, creates an atomic inquiry/brief RPC, restricts activity-feed access to studio members, and adds normalized project-finance and quarterly-report tables/functions.
+14. [`20261108060000_enable_system_activity_realtime.sql`](../supabase/migrations/20261108060000_enable_system_activity_realtime.sql): adds `system_activity_logs` to the Supabase Realtime publication.
+15. [`20261108070000_restrict_membership_changes_to_active_projects.sql`](../supabase/migrations/20261108070000_restrict_membership_changes_to_active_projects.sql): prevents project member additions or role changes after completion while allowing membership removal to revoke access.
 
-Migrations 9 to 12 harden and refine migration 8; migration 13 then finalizes
-inquiry priority, activity-feed access, and finance.
+Migrations 9 to 12 harden and refine migration 8; migrations 13 to 15 finalize
+inquiry priority, activity-feed access/Realtime, finance, and project-team
+membership boundaries.
 
 Do not treat edits made only in the Supabase dashboard as the source of truth.
 Test a fresh database and a database upgraded through the full migration chain.
 
 ## Hosted Kiln-Studio rollout
 
-The Supabase CLI identifies project `jabucfytsktswtrsfwnp` (`Kiln-Studio`) as
-**production**. On the last remote inspection, the migration history contained
-`20261107032739` and `20261107032815`, which do not correspond to files in this
-repository, while none of the repository migration versions appeared in remote
-history. The `inquiries` table
-is exposed through the remote REST API. Several other tables returned PostgREST
-`PGRST205` (not present in the API schema cache); that response alone does
-**not** prove those tables are absent from PostgreSQL.
+Private operational note: remote project IDs, hosted database names, and any
+production reset command belong in a private environment note rather than this
+repository. Treat the local, reviewed migration chain in `supabase/migrations/`
+as the canonical source of truth for the app schema.
 
-Because migration history and deployed schema do not currently match, do not
-run `supabase db push` or paste the migration files into the SQL Editor as-is.
-The first migration creates `inquiries` without `IF NOT EXISTS`, so it will
-conflict with the already-exposed table. The two remote-only migration IDs
-must not be manually marked reverted or deleted as a substitute for inspecting
-the database.
-
-### Option A: intentionally rebuild the empty project
-
-Use this only when all current database contents and schema can be discarded.
-Take a recoverable backup first if there is any uncertainty. From the repository
-root, with the Supabase CLI authenticated and the database password available
-locally, run:
-
-```sh
-npx supabase db reset --remote=jabucfytsktswtrsfwnp --no-seed
-```
-
-Confirm the CLI's destructive-reset prompt only after verifying the target is
-`Kiln-Studio` (`jabucfytsktswtrsfwnp`). The remote reset rebuilds the database
-from every migration in `supabase/migrations/` and replaces the inconsistent
-remote migration history; it deletes existing database data and schema. Do not
-add `--yes` unless deliberately bypassing the CLI's confirmation prompt.
-
-After the reset completes, verify the migration list and schema:
-
-```sh
-npx supabase migration list --remote=jabucfytsktswtrsfwnp
-npx supabase db lint --remote=jabucfytsktswtrsfwnp --fail-on error
-npx supabase test db --remote=jabucfytsktswtrsfwnp
-```
-
-The migration list should show exactly the versions present in
-`supabase/migrations/`, all applied, and nothing else. Do not hard-code a count
-in this document; the directory is the single source of truth. The pgTAP tests
-run inside transactions and roll back their synthetic fixtures. The full local
-suite covers project lifecycles, RLS and grants, sender identity, availability,
-channel roles and project-brief constraints. Treat remote execution as a
-separate verification from local execution.
-
-### Option B: preserve the existing database
-
-Do not reset or run the migrations blindly. First take a backup, inspect the
-contents of remote migrations `20261107032739` and `20261107032815`, and compare
-the actual PostgreSQL schema, constraints, triggers, grants, RLS policies, and
-data with each migration file above. Establish which earlier migrations were
-already applied manually, then create a reviewed forward-only migration that
-brings the live schema to the repository's expected state. Keep the existing
-inquiry data and migration history intact. This reconciliation requires a
-database administrator to inspect the live database; the REST API's
-`PGRST205` response is not enough to conclude that a table is missing.
-
-Do not record a migration as applied until its schema changes are verified in
-the live database. Do not run `migration repair --status reverted` for the
-unknown versions unless their effects have been inspected and there is a
-specific, reviewed repair plan.
+If you need to repair a live project, inspect the hosted database privately,
+compare the actual schema against the repository migrations, then apply a
+reviewed forward-only migration. Never paste raw remote reset commands or
+project identifiers into project docs that are intended for public review.
 
 ## Current tables (committed)
 
@@ -601,13 +554,17 @@ Expected access boundaries:
 Project-scoped behavior added by migration 8: project-scoped team membership,
 automatic project-channel creation, admin-only PM changes, membership and
 channel synchronization, and project-channel history filtered to current
-channel members. Membership changes are permitted to the project's PM for their
-own project or to a studio admin. The Team UI lists ordered project channels and
-exposes admin PM assignment, deadline editing, and PM-only completion. Project
-membership editing and the System activity feed viewer are not yet wired to the
-UI; the team roster and regular Team chat remain local sample data. Finance has
-database tables, access policies, totals, and publishing functions, but no
-application UI or API workflow.
+channel members. Migration 15 limits membership additions and role changes to
+active projects while allowing removals from completed projects so access can
+be revoked. Membership changes are permitted to the project's PM for their own
+project or to a studio admin. The Team UI loads live team members, memberships,
+and recent project messages; its authenticated routes write messages and add or
+remove members through RLS-protected sessions. Project messages show the latest
+100 rows per visible channel. The Team page also exposes admin PM assignment,
+deadline editing, and PM-only completion. The admin dashboard displays recent
+system activity and subscribes to new audit events. Finance has database
+tables, access policies, totals, and publishing functions, but no application
+UI or API workflow.
 
 Known limitations, verified against the committed SQL:
 
@@ -626,9 +583,10 @@ Known limitations, verified against the committed SQL:
   workflow currently consumes them.
 - **System activity is admin-only.** Designers cannot read
   `system_activity_logs`; rows expose changed column names, never values.
-- **Role constants mismatch.** TypeScript role and availability constants are
-  uppercase, while legacy team/channel SQL constraints are lowercase. Normalize
-  before connecting every typed Team UI operation.
+- **Legacy role casing.** Legacy availability and channel-member role values
+  remain lowercase while the UI constants are uppercase. Project-role writes
+  use the project-specific uppercase role names; normalize any future
+  availability or channel-role editors before exposing them.
 - **Policy fallbacks are inert.** Several policies fall back to
   `auth.jwt() ->> 'role'`. That claim is always `authenticated`, `anon` or
   `service_role`, so the fallback never matches. It is harmless but misleading.

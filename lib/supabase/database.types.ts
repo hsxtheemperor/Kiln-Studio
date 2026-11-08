@@ -246,6 +246,67 @@ export type ProjectMemberRow = {
   updated_at: string;
 };
 
+export type ProjectChannelMessageRow = {
+  id: string;
+  channel_id: string;
+  sender_member_id: string | null;
+  sender_name: string;
+  sender_role: string | null;
+  body: string;
+  message_source: "app" | "slack";
+  created_at: string;
+};
+
+export type SlackInstallationRow = {
+  id: boolean;
+  workspace_id: string;
+  workspace_name: string;
+  bot_user_id: string;
+  encrypted_bot_token: string;
+  installed_by: string;
+  installed_at: string;
+  updated_at: string;
+};
+
+export type SlackUserMappingRow = {
+  team_member_id: string;
+  slack_user_id: string;
+  verified_at: string;
+  linked_by: string;
+};
+
+export type SlackProjectChannelRow = {
+  project_id: string;
+  slack_channel_id: string;
+  slack_channel_name: string;
+  synced_at: string;
+};
+
+export type SlackProjectSyncJobRow = {
+  project_id: string;
+  action: "create" | "archive";
+  status: "pending" | "processing" | "retry" | "completed" | "failed";
+  attempt_count: number;
+  available_at: string;
+  claimed_at: string | null;
+  last_error: string | null;
+  updated_at: string;
+};
+
+export type SlackMessageOutboxRow = {
+  id: string;
+  project_id: string;
+  project_channel_message_id: string;
+  status: "pending" | "processing" | "retry" | "delivered" | "failed";
+  attempt_count: number;
+  available_at: string;
+  claimed_at: string | null;
+  slack_message_ts: string | null;
+  last_error: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 export type SystemActivityLogRow = {
   id: string;
   channel_id: string;
@@ -499,6 +560,103 @@ export type Database = {
         Update: Partial<ProjectChannelRow>;
         Relationships: [];
       };
+      project_channel_messages: {
+        Row: ProjectChannelMessageRow;
+        Insert: {
+          id?: string;
+          channel_id: string;
+          sender_member_id?: string | null;
+          sender_name: string;
+          sender_role?: string | null;
+          body: string;
+          message_source?: ProjectChannelMessageRow["message_source"];
+          created_at?: string;
+        };
+        Update: never;
+        Relationships: [];
+      };
+      slack_installations: {
+        Row: SlackInstallationRow;
+        Insert: Omit<SlackInstallationRow, "installed_at" | "updated_at"> & {
+          installed_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<SlackInstallationRow>;
+        Relationships: [];
+      };
+      slack_user_mappings: {
+        Row: SlackUserMappingRow;
+        Insert: Omit<SlackUserMappingRow, "verified_at"> & { verified_at?: string };
+        Update: Partial<SlackUserMappingRow>;
+        Relationships: [];
+      };
+      slack_project_channels: {
+        Row: SlackProjectChannelRow;
+        Insert: Omit<SlackProjectChannelRow, "synced_at"> & { synced_at?: string };
+        Update: Partial<SlackProjectChannelRow>;
+        Relationships: [];
+      };
+      slack_project_sync_jobs: {
+        Row: SlackProjectSyncJobRow;
+        Insert: Omit<SlackProjectSyncJobRow, "attempt_count" | "available_at" | "claimed_at" | "last_error" | "updated_at"> & {
+          attempt_count?: number;
+          available_at?: string;
+          claimed_at?: string | null;
+          last_error?: string | null;
+          updated_at?: string;
+        };
+        Update: Partial<SlackProjectSyncJobRow>;
+        Relationships: [];
+      };
+      slack_message_outbox: {
+        Row: SlackMessageOutboxRow;
+        Insert: Omit<SlackMessageOutboxRow, "id" | "attempt_count" | "available_at" | "claimed_at" | "slack_message_ts" | "last_error" | "created_at" | "updated_at"> & {
+          id?: string;
+          attempt_count?: number;
+          available_at?: string;
+          claimed_at?: string | null;
+          slack_message_ts?: string | null;
+          last_error?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<SlackMessageOutboxRow>;
+        Relationships: [];
+      };
+      slack_event_receipts: {
+        Row: {
+          event_id: string;
+          outcome: "processing" | "stored" | "ignored";
+          provider_channel_id: string | null;
+          provider_message_ts: string | null;
+          received_at: string;
+          processed_at: string | null;
+        };
+        Insert: {
+          event_id: string;
+          outcome?: "processing" | "stored" | "ignored";
+          provider_channel_id?: string | null;
+          provider_message_ts?: string | null;
+          received_at?: string;
+          processed_at?: string | null;
+        };
+        Update: Partial<Database["public"]["Tables"]["slack_event_receipts"]["Row"]>;
+        Relationships: [];
+      };
+      slack_provider_messages: {
+        Row: {
+          provider_channel_id: string;
+          provider_message_ts: string;
+          project_channel_message_id: string;
+        };
+        Insert: {
+          provider_channel_id: string;
+          provider_message_ts: string;
+          project_channel_message_id: string;
+        };
+        Update: never;
+        Relationships: [];
+      };
       project_messages: {
         Row: ProjectMessageRow;
         Insert: {
@@ -567,6 +725,32 @@ export type Database = {
       list_project_channels: {
         Args: Record<PropertyKey, never>;
         Returns: ProjectChannelRow[];
+      };
+      claim_slack_project_sync_jobs: {
+        Args: { p_limit?: number };
+        Returns: SlackProjectSyncJobRow[];
+      };
+      claim_slack_message_outbox: {
+        Args: { p_limit?: number };
+        Returns: SlackMessageOutboxRow[];
+      };
+      complete_slack_project_sync: {
+        Args: {
+          p_project_id: string;
+          p_slack_channel_id: string;
+          p_slack_channel_name: string;
+        };
+        Returns: undefined;
+      };
+      persist_slack_inbound_message: {
+        Args: {
+          p_event_id: string;
+          p_provider_channel_id: string;
+          p_provider_message_ts: string;
+          p_slack_user_id: string;
+          p_body: string;
+        };
+        Returns: string;
       };
       recurring_expense_occurrences: {
         Args: { p_from: string; p_to: string };

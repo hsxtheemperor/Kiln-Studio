@@ -13,8 +13,8 @@ export default function PublicLayout({
       <div className="site-shell">
         <header className="site-header">
           <Link className="brand-mark" href="/" aria-label="Kiln Studio home">
-            <span className="brand-symbol" aria-hidden="true">k</span>
-            <span>kiln studio</span>
+            <span className="brand-symbol" aria-hidden="true">✦</span>
+            <span>Kiln Studio</span>
           </Link>
           <nav className="site-nav" aria-label="Main navigation">
             <Link href="/services">Services</Link>

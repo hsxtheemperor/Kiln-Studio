@@ -53,10 +53,15 @@ The UI illustrates the intended workflow:
 
 It does **not** currently implement live user-set availability, database-backed
 team roster, project membership editing, channel chat, announcement write
-permissions, or the System activity feed viewer. The database enforces project
-membership access and allows current project members to read archived channel
-history; removed members lose access. The Team page must not be used to
-coordinate confidential real work.
+permissions, or a System activity feed inside the Team page. The database
+enforces project membership access and allows current project members to read
+archived channel history; removed members lose access. The Team page must not be
+used to coordinate confidential real work.
+
+The admin dashboard includes a live System activity feed. It loads the newest
+25 audit events and receives new inserts through Supabase Realtime. RLS limits
+history and events to studio members; the feed displays operation/table/
+changed-column metadata only, never row values.
 
 ## Other modeled but not fully surfaced data
 
@@ -70,7 +75,7 @@ coordinate confidential real work.
   later reconciliation and should not receive new finance records.
 - `system_activity_logs` records operational table changes and is readable by
   studio members only. The System channel is an event feed, not a chat composer,
-  and its viewer UI is not yet implemented.
+  and the admin dashboard displays its recent events live.
 - The database-backed project channel list is live; roster, member editing, and
   regular Team chat still use sample/local state.
 
@@ -93,7 +98,9 @@ coordinate confidential real work.
 ## Release cautions
 
 Do not present the fictional studio or sample project names as real client
-work. Do not publish actual inquiry data. The documented 14-day cleanup policy
-is not an automated guarantee until a cleanup task is implemented and tested.
-See [DATABASE.md](./DATABASE.md) for schema and security boundaries and
+work. Do not publish actual inquiry data. The repo now includes a protected
+demo-retention cleanup route to remove inquiries older than 14 days from the
+active demo dataset. Keep the private cron secret out of version control and
+confirm the cleanup window before sharing the public form. See
+[DATABASE.md](./DATABASE.md) for schema and security boundaries and
 [PROD.md](./PROD.md) for the future integration path.

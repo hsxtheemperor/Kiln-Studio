@@ -8,6 +8,7 @@ import {
 } from "@/lib/studio/constants";
 import type { createSupabaseSessionClient } from "@/lib/supabase/session";
 import { getPriorityLabel, PRIORITY_MAX } from "@/lib/project-priority";
+import { ActivityFeed } from "@/components/admin/activity-feed";
 
 const teamOverview: Array<{
   id: string;
@@ -58,12 +59,27 @@ export async function AdminDashboard({
 }: {
   supabase: Awaited<ReturnType<typeof createSupabaseSessionClient>>;
 }) {
-  const [{ count: totalCount }, { count: openCount }, { count: urgentCount }, { data: inquiriesData }, { data: priorityInquiries }] = await Promise.all([
+  const [
+    { count: totalCount },
+    { count: openCount },
+    { count: urgentCount },
+    { data: inquiriesData },
+    { data: priorityInquiries },
+    { data: activityEvents, error: activityError },
+  ] = await Promise.all([
     supabase.from("inquiries").select("id", { count: "exact", head: true }),
     supabase.from("inquiries").select("id", { count: "exact", head: true }).eq("status", "new"),
     supabase.from("inquiries").select("id", { count: "exact", head: true }).gte("priority_score", 8),
     supabase.from("inquiries").select("id, name, email, company, status, created_at").order("created_at", { ascending: false }).limit(5),
     supabase.from("inquiries").select("id, name, company, priority_score").order("priority_score", { ascending: false }).order("created_at", { ascending: false }).limit(5),
+    supabase
+      .from("system_activity_logs")
+      .select(
+        "id, channel_id, table_name, record_id, operation, changed_columns, actor_user_id, occurred_at",
+      )
+      .order("occurred_at", { ascending: false })
+      .order("id", { ascending: false })
+      .limit(25),
   ]);
 
   const recent = inquiriesData ?? [];
@@ -176,6 +192,11 @@ export async function AdminDashboard({
           </div>
         </div>
       </div>
+
+      <ActivityFeed
+        initialEvents={activityEvents ?? []}
+        initialError={activityError?.message ?? null}
+      />
 
       <div className="inbox-table-wrap" style={{ marginTop: "24px" }}>
         <table className="inbox-table">

@@ -1,0 +1,133 @@
+BEGIN;
+
+SELECT plan(9);
+
+INSERT INTO public.team_members (id, user_id, full_name, email)
+VALUES
+  ('21000000-0000-0000-0000-000000000001', '11000000-0000-0000-0000-000000000001', 'Slack Project PM', 'slack-pm@example.test'),
+  ('21000000-0000-0000-0000-000000000002', '11000000-0000-0000-0000-000000000002', 'Slack Designer', 'slack-designer@example.test'),
+  ('21000000-0000-0000-0000-000000000003', '11000000-0000-0000-0000-000000000003', 'Unassigned Slack User', 'slack-unassigned@example.test');
+
+INSERT INTO public.inquiries (
+  id, name, email, company, service, project_brief, status, priority_score
+)
+VALUES (
+  '31000000-0000-0000-0000-000000000001',
+  'Slack Client',
+  'slack-client@example.test',
+  'Slack Studio',
+  'brand_identity',
+  'Slack test project',
+  'accepted',
+  5
+);
+
+UPDATE public.projects
+SET project_manager_id = '21000000-0000-0000-0000-000000000001'
+WHERE inquiry_id = '31000000-0000-0000-0000-000000000001';
+
+INSERT INTO public.project_members (project_id, team_member_id, role_name)
+SELECT id, '21000000-0000-0000-0000-000000000002', 'DESIGNER'
+FROM public.projects
+WHERE inquiry_id = '31000000-0000-0000-0000-000000000001';
+
+INSERT INTO public.slack_user_mappings (team_member_id, slack_user_id, linked_by)
+VALUES
+  ('21000000-0000-0000-0000-000000000002', 'USLACKDESIGNER', '11000000-0000-0000-0000-000000000001'),
+  ('21000000-0000-0000-0000-000000000003', 'USLACKUNASSIGNED', '11000000-0000-0000-0000-000000000001');
+
+INSERT INTO public.slack_project_channels (project_id, slack_channel_id, slack_channel_name)
+SELECT id, 'CSLACKPROJECT', 'kiln-project-test'
+FROM public.projects
+WHERE inquiry_id = '31000000-0000-0000-0000-000000000001';
+
+SELECT is(
+  (SELECT count(*) FROM public.slack_project_sync_jobs
+   WHERE project_id = (SELECT id FROM public.projects WHERE inquiry_id = '31000000-0000-0000-0000-000000000001')),
+  1::bigint,
+  'project channel creation queues a Slack sync job'
+);
+
+SELECT ok(
+  NOT has_table_privilege('authenticated', 'public.slack_installations', 'SELECT')
+  AND NOT has_table_privilege('authenticated', 'public.slack_user_mappings', 'SELECT')
+  AND has_table_privilege('service_role', 'public.slack_installations', 'SELECT'),
+  'Slack credentials and identity mappings are private to the service role'
+);
+
+INSERT INTO public.project_channel_messages (
+  channel_id, sender_member_id, sender_name, sender_role, body
+)
+SELECT channels.id, '21000000-0000-0000-0000-000000000002',
+       'Slack Designer', 'DESIGNER', 'App-originated message'
+FROM public.project_channels AS channels
+JOIN public.projects ON projects.id = channels.project_id
+WHERE projects.inquiry_id = '31000000-0000-0000-0000-000000000001';
+
+SELECT is(
+  (SELECT count(*) FROM public.slack_message_outbox
+   WHERE project_id = (SELECT id FROM public.projects WHERE inquiry_id = '31000000-0000-0000-0000-000000000001')),
+  1::bigint,
+  'app-originated messages are placed in the Slack outbox'
+);
+
+SET LOCAL ROLE service_role;
+
+SELECT is(
+  public.persist_slack_inbound_message(
+    'EvSlackTest0001',
+    'CSLACKPROJECT',
+    '1794172800.000100',
+    'USLACKDESIGNER',
+    'Slack-originated message'
+  ),
+  'stored',
+  'a linked current project member can persist an inbound Slack message'
+);
+
+SELECT is(
+  (SELECT count(*) FROM public.project_channel_messages
+   WHERE message_source = 'slack' AND body = 'Slack-originated message'),
+  1::bigint,
+  'inbound Slack messages are stored as project channel messages'
+);
+
+SELECT is(
+  public.persist_slack_inbound_message(
+    'EvSlackTest0001',
+    'CSLACKPROJECT',
+    '1794172800.000100',
+    'USLACKDESIGNER',
+    'Slack-originated message'
+  ),
+  'duplicate',
+  'duplicate Slack event IDs are idempotently ignored'
+);
+
+SELECT is(
+  public.persist_slack_inbound_message(
+    'EvSlackTest0002',
+    'CSLACKPROJECT',
+    '1794172800.000200',
+    'USLACKUNASSIGNED',
+    'Message from a non-member'
+  ),
+  'ignored',
+  'Slack users without current project membership cannot write to app history'
+);
+
+SELECT is(
+  (SELECT count(*) FROM public.project_channel_messages
+   WHERE message_source = 'slack' AND body = 'Message from a non-member'),
+  0::bigint,
+  'ignored Slack messages are not visible in project history'
+);
+
+SELECT ok(
+  (SELECT count(*) FROM public.claim_slack_message_outbox(10)) > 0,
+  'service role can claim ready Slack outbox jobs'
+);
+
+RESET ROLE;
+SELECT * FROM finish();
+ROLLBACK;

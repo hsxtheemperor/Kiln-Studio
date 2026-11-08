@@ -10,7 +10,7 @@ export default async function AdminTeamPage() {
   const { channels: projectChannels, error } = await getProjectChannels(supabase, user.id);
   const { data: teamMembers, error: teamError } = await supabase
     .from("team_members")
-    .select("id, full_name, email")
+    .select("id, full_name, email, title, specialty, availability_status")
     .eq("is_active", true)
     .order("full_name", { ascending: true });
 

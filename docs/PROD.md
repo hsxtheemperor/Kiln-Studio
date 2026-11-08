@@ -1,10 +1,8 @@
 # Production direction: durable team collaboration and Slack integration
 
-The current embedded Team chat is a local-state demo, not a production chat
-system. Production work should first establish durable project membership,
-authorization, and message storage in the application. Slack integration can
-then be added as an external collaboration surface without making Slack the
-source of truth for project permissions.
+The Team workspace now uses durable project membership and message storage for
+project channels. Slack can be added as an external collaboration surface
+without making Slack the source of truth for project permissions.
 
 ## Recommended source of truth
 
@@ -15,25 +13,32 @@ source of truth for project permissions.
 - Slack is an optional transport/collaboration surface synchronized through a
   controlled integration.
 
-The existing schema is only a starting point: assignments/channels are currently
-based partly on legacy inquiry links; new projects now have project-scoped
-memberships and dedicated channels. Canonical enum casing differs between SQL
-and TypeScript, and the Team UI is not connected to the tables. Resolve these
-before adding Slack.
+New projects have project-scoped memberships and dedicated channels. The Team
+workspace reads project membership and channel history from Supabase; the
+authenticated API writes messages and adds/removes members, while RLS remains
+the final authorization boundary. Project manager assignment remains separate
+from project-team roles.
 
 ## Staged approach
 
 ### Stage 1: Make the in-app workflow real
 
+The project-channel foundation is implemented:
+
 1. Introduce or confirm a first-class `projects` entity and its inquiry lifecycle.
-2. Normalize project roles, availability, channel types, and member roles across
-   application and database.
-3. Add transaction-backed assignment and channel membership services.
-4. Enforce PM/admin boundaries and membership-based message history access in
-   PostgreSQL and server routes.
-5. Connect availability, team views, channel membership, and persistent messages
-   to the database.
-6. Add tests for authorization, synchronization, revocation, and failure cases.
+2. Keep project manager assignment separate from project-team roles; synchronize
+   project memberships with channel membership in the database.
+3. Enforce PM/admin membership editing and membership-based message-history
+   access in PostgreSQL RLS, with authenticated server routes for writes.
+4. Connect project team views, channel membership, and persistent project
+   messages to the database.
+5. Test project-channel access, role assignment, sender identity, and history
+   revocation.
+
+Availability management and general/announcement chat are not part of this
+project-channel foundation. The current message view loads the latest 100
+messages per visible project channel; pagination and realtime updates remain
+future work.
 
 ### Stage 2: Integrate Slack
 

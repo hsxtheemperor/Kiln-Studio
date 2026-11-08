@@ -1,155 +1,36 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
-import {
-  AvailabilityStatus,
-  ChannelType,
-  type AvailabilityStatusValue,
-  type ChannelTypeValue,
-  getAvailabilityClassName,
-  getAvailabilityLabel,
-} from "@/lib/studio/constants";
+import { useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { ProjectRole } from "@/lib/studio/constants";
+import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
+import type { ProjectChannelMessageRow } from "@/lib/supabase/database.types";
 import type { ProjectChannelView, ProjectManagerOption } from "@/lib/studio/project-channels";
 
-type ProjectAssignment = {
-  project: string;
-  role: string;
-  status: "Active" | "Waiting on client" | "Needs review";
-};
-
-type TeamMember = {
-  id: string;
-  name: string;
-  title: string;
-  specialty: string;
-  availability: AvailabilityStatusValue;
-  assignedProjects: ProjectAssignment[];
-};
-
-type ChannelMessage = {
-  id: string;
-  sender: string;
-  role: string;
-  body: string;
-  time: string;
-  side: "self" | "team";
-};
-
-type Channel = {
-  id: string;
-  name: string;
-  type: ChannelTypeValue;
-  description: string;
-  moderator: string;
-  members: string[];
-  messages: ChannelMessage[];
-};
-
-const teamMembers: TeamMember[] = [
-  {
-    id: "maya",
-    name: "Maya Sol",
-    title: "Creative lead",
-    specialty: "Brand direction",
-    availability: AvailabilityStatus.AVAILABLE,
-    assignedProjects: [
-      { project: "Northlane rebrand", role: "Project owner", status: "Active" },
-      { project: "Parley packaging", role: "Creative director", status: "Needs review" },
-    ],
-  },
-  {
-    id: "leo",
-    name: "Leo Grant",
-    title: "Senior designer",
-    specialty: "Packaging & product",
-    availability: AvailabilityStatus.BUSY,
-    assignedProjects: [
-      { project: "Northlane rebrand", role: "Design lead", status: "Active" },
-      { project: "Harvest retail identity", role: "Packaging designer", status: "Waiting on client" },
-    ],
-  },
-  {
-    id: "nina",
-    name: "Nina Park",
-    title: "UX strategist",
-    specialty: "Experience mapping",
-    availability: AvailabilityStatus.AWAY,
-    assignedProjects: [
-      { project: "Brookline app", role: "Research lead", status: "Active" },
-    ],
-  },
-  {
-    id: "omar",
-    name: "Omar Singh",
-    title: "Account manager",
-    specialty: "Client communication",
-    availability: AvailabilityStatus.AVAILABLE,
-    assignedProjects: [
-      { project: "Northlane rebrand", role: "Client liaison", status: "Active" },
-      { project: "Harvest retail identity", role: "Account manager", status: "Waiting on client" },
-    ],
-  },
-  {
-    id: "sofia",
-    name: "Sofia Voss",
-    title: "Production partner",
-    specialty: "Handoff & QA",
-    availability: AvailabilityStatus.AVAILABLE,
-    assignedProjects: [
-      { project: "Brookline app", role: "Production handoff", status: "Needs review" },
-    ],
-  },
+const projectMemberRoles = [
+  "TEAM_MEMBER",
+  "DESIGNER",
+  ...Object.values(ProjectRole).filter((role) => role !== ProjectRole.PROJECT_MANAGER),
 ];
 
-const initialChannels: Channel[] = [
-  {
-    id: "general",
-    name: "General chat",
-    type: ChannelType.GENERAL,
-    description: "Everything cross-team and cross-project.",
-    moderator: "Maya Sol",
-    members: ["Maya Sol", "Leo Grant", "Nina Park", "Omar Singh", "Sofia Voss"],
-    messages: [
-      { id: "g-1", sender: "Maya Sol", role: "Creative lead", body: "Morning sync: client feedback is due today for Northlane. Please flag any blockers before 3PM.", time: "09:12", side: "team" },
-      { id: "g-2", sender: "You", role: "Studio lead", body: "I’ll share the updated client notes in the project room once they come in.", time: "09:14", side: "self" },
-    ],
-  },
-  {
-    id: "announcements",
-    name: "Announcements",
-    type: ChannelType.ANNOUNCEMENT,
-    description: "Admin-only updates and critical studio notices.",
-    moderator: "Admin",
-    members: ["Admin"],
-    messages: [
-      { id: "a-1", sender: "Admin", role: "Studio lead", body: "All teams: the client review for Northlane moves to Thursday at 11:00. Please prepare review decks and any open questions.", time: "08:40", side: "team" },
-    ],
-  },
-  {
-    id: "northlane",
-    name: "Northlane rebrand",
-    type: ChannelType.PROJECT,
-    description: "Rebrand sprint with creative direction, design, and client communication synced to the same workspace.",
-    moderator: "Maya Sol",
-    members: ["Maya Sol", "Leo Grant", "Omar Singh"],
-    messages: [
-      { id: "n-1", sender: "Maya Sol", role: "Project owner", body: "We have the revised tone deck. Leo, can you update the concept directions before the next review?", time: "10:10", side: "team" },
-      { id: "n-2", sender: "Leo Grant", role: "Design lead", body: "Yes — I’ll refine the packaging direction and send the updated explorations this afternoon.", time: "10:12", side: "team" },
-    ],
-  },
-  {
-    id: "brookline",
-    name: "Brookline app",
-    type: ChannelType.PROJECT,
-    description: "UX sprint focused on research, flows, and production delivery details.",
-    moderator: "Nina Park",
-    members: ["Nina Park", "Sofia Voss"],
-    messages: [
-      { id: "b-1", sender: "Nina Park", role: "Research lead", body: "I’ve mapped the onboarding friction points. We need a smoother first-run flow before QA.", time: "11:00", side: "team" },
-    ],
-  },
-];
+function getErrorMessage(payload: unknown, fallback: string): string {
+  if (
+    typeof payload === "object" &&
+    payload !== null &&
+    "error" in payload &&
+    typeof payload.error === "string"
+  ) {
+    return payload.error;
+  }
+  return fallback;
+}
+
+function formatRoleName(role: string): string {
+  return role
+    .split("_")
+    .map((word) => word.charAt(0) + word.slice(1).toLowerCase())
+    .join(" ");
+}
 
 export function TeamWorkspace({
   scope,
@@ -165,39 +46,168 @@ export function TeamWorkspace({
   teamMemberOptionsError?: string;
 }) {
   const router = useRouter();
-  const [channels, setChannels] = useState(initialChannels);
+  const searchParams = useSearchParams();
+  const slackStatus = searchParams.get("slack");
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [projectError, setProjectError] = useState("");
   const [savingProjectId, setSavingProjectId] = useState<string | null>(null);
+  const [savingMessageChannelId, setSavingMessageChannelId] = useState<string | null>(null);
+  const [savingMembershipProjectId, setSavingMembershipProjectId] = useState<string | null>(null);
+  const [collaborationErrors, setCollaborationErrors] = useState<Record<string, string>>({});
+  const [messagesByChannel, setMessagesByChannel] = useState<
+    Record<string, ProjectChannelMessageRow[]>
+  >(() =>
+    Object.fromEntries(liveProjectChannels.map((channel) => [channel.id, channel.messages])),
+  );
+  const [membersByProject, setMembersByProject] = useState<
+    Record<string, ProjectChannelView["members"]>
+  >(() =>
+    Object.fromEntries(liveProjectChannels.map((channel) => [channel.project_id, channel.members])),
+  );
 
-  const availableCount = teamMembers.filter((member) => member.availability === AvailabilityStatus.AVAILABLE).length;
-  const awayCount = teamMembers.filter((member) => member.availability === AvailabilityStatus.AWAY).length;
-  const unassignedCount = teamMembers.filter((member) => member.assignedProjects.length === 0).length;
-  const projectChannels = channels.filter((channel) => channel.type === ChannelType.PROJECT);
+  useEffect(() => {
+    setMessagesByChannel(
+      Object.fromEntries(liveProjectChannels.map((channel) => [channel.id, channel.messages])),
+    );
+    setMembersByProject(
+      Object.fromEntries(liveProjectChannels.map((channel) => [channel.project_id, channel.members])),
+    );
+  }, [liveProjectChannels]);
 
-  function sendMessage(channelId: string) {
-    const value = (drafts[channelId] ?? "").trim();
-    if (!value) {
+  useEffect(() => {
+    if (!liveProjectChannels.length) return;
+
+    let supabase: ReturnType<typeof createSupabaseBrowserClient>;
+    try {
+      supabase = createSupabaseBrowserClient();
+    } catch (error) {
+      console.error("Project channel realtime is unavailable.", error);
       return;
     }
 
-    const nextMessage: ChannelMessage = {
-      id: `${channelId}-${Date.now()}`,
-      sender: scope === "admin" ? "Studio lead" : "Design lead",
-      role: scope === "admin" ? "Admin" : "Designer",
-      body: value,
-      time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-      side: "self",
-    };
-
-    setChannels((currentChannels) =>
-      currentChannels.map((channel) =>
-        channel.id === channelId
-          ? { ...channel, messages: [...channel.messages, nextMessage] }
-          : channel,
-      ),
+    const subscriptions = liveProjectChannels.map((channel) =>
+      supabase
+        .channel(`project-messages-${channel.id}`)
+        .on(
+          "postgres_changes",
+          {
+            event: "INSERT",
+            schema: "public",
+            table: "project_channel_messages",
+            filter: `channel_id=eq.${channel.id}`,
+          },
+          () => router.refresh(),
+        )
+        .subscribe((status) => {
+          if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+            console.error(`Realtime updates are unavailable for project channel ${channel.id}.`);
+          }
+        }),
     );
-    setDrafts((currentDrafts) => ({ ...currentDrafts, [channelId]: "" }));
+
+    return () => {
+      for (const subscription of subscriptions) {
+        void supabase.removeChannel(subscription);
+      }
+    };
+  }, [liveProjectChannels, router]);
+
+  async function sendMessage(channel: ProjectChannelView) {
+    const body = (drafts[channel.id] ?? "").trim();
+    if (!body) return;
+
+    setSavingMessageChannelId(channel.id);
+    setCollaborationErrors((errors) => ({ ...errors, [channel.id]: "" }));
+    try {
+      const response = await fetch(`/api/projects/${channel.project_id}/messages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ channel_id: channel.id, body }),
+      });
+      const payload: unknown = await response.json();
+      if (!response.ok) {
+        setCollaborationErrors((errors) => ({
+          ...errors,
+          [channel.id]: getErrorMessage(payload, "The message could not be sent."),
+        }));
+        return;
+      }
+
+      setDrafts((currentDrafts) => ({ ...currentDrafts, [channel.id]: "" }));
+      router.refresh();
+    } catch {
+      setCollaborationErrors((errors) => ({
+        ...errors,
+        [channel.id]: "Could not reach the server. Please try again.",
+      }));
+    } finally {
+      setSavingMessageChannelId(null);
+    }
+  }
+
+  async function addProjectMember(projectId: string, form: HTMLFormElement) {
+    const formData = new FormData(form);
+    const teamMemberId = formData.get("team_member_id");
+    const roleName = formData.get("role_name");
+    if (typeof teamMemberId !== "string" || typeof roleName !== "string") return;
+
+    setSavingMembershipProjectId(projectId);
+    setCollaborationErrors((errors) => ({ ...errors, [projectId]: "" }));
+    try {
+      const response = await fetch(`/api/projects/${projectId}/members`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ team_member_id: teamMemberId, role_name: roleName }),
+      });
+      const payload: unknown = await response.json();
+      if (!response.ok) {
+        setCollaborationErrors((errors) => ({
+          ...errors,
+          [projectId]: getErrorMessage(payload, "The project member could not be added."),
+        }));
+        return;
+      }
+      form.reset();
+      router.refresh();
+    } catch {
+      setCollaborationErrors((errors) => ({
+        ...errors,
+        [projectId]: "Could not reach the server. Please try again.",
+      }));
+    } finally {
+      setSavingMembershipProjectId(null);
+    }
+  }
+
+  async function removeProjectMember(projectId: string, memberId: string, memberName: string) {
+    if (!window.confirm(`Remove ${memberName} from this project? They will lose access to its channel history.`)) {
+      return;
+    }
+    setSavingMembershipProjectId(projectId);
+    setCollaborationErrors((errors) => ({ ...errors, [projectId]: "" }));
+    try {
+      const response = await fetch(`/api/projects/${projectId}/members`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ team_member_id: memberId }),
+      });
+      const payload: unknown = await response.json();
+      if (!response.ok) {
+        setCollaborationErrors((errors) => ({
+          ...errors,
+          [projectId]: getErrorMessage(payload, "The project member could not be removed."),
+        }));
+        return;
+      }
+      router.refresh();
+    } catch {
+      setCollaborationErrors((errors) => ({
+        ...errors,
+        [projectId]: "Could not reach the server. Please try again.",
+      }));
+    } finally {
+      setSavingMembershipProjectId(null);
+    }
   }
 
   async function updateProject(
@@ -248,26 +258,66 @@ export function TeamWorkspace({
 
       <div className="team-overview-grid">
         <div className="team-metric-card">
-          <span>Total team</span>
-          <strong>{teamMembers.length}</strong>
-          <small>People under studio operations</small>
+          <span>Active team</span>
+          <strong>{teamMemberOptions?.length ?? 0}</strong>
+          <small>People available for project assignments</small>
         </div>
         <div className="team-metric-card">
-          <span>Available</span>
-          <strong>{availableCount}</strong>
-          <small>Ready to take on more work</small>
+          <span>Active projects</span>
+          <strong>{liveProjectChannels.filter((channel) => channel.project_status === "active").length}</strong>
+          <small>Project channels accepting messages</small>
         </div>
         <div className="team-metric-card">
-          <span>Away</span>
-          <strong>{awayCount}</strong>
-          <small>Unavailable for the next handoff window</small>
-        </div>
-        <div className="team-metric-card">
-          <span>Unassigned</span>
-          <strong>{unassignedCount}</strong>
-          <small>Good for triage or overflow work</small>
+          <span>Archived channels</span>
+          <strong>{liveProjectChannels.filter((channel) => channel.is_archived).length}</strong>
+          <small>Completed project history</small>
         </div>
       </div>
+
+      <section className="team-panel slack-connection-panel">
+        <div>
+          <div className="ops-card-header">
+            <h3>Slack integration</h3>
+            <span>Optional collaboration sync</span>
+          </div>
+          <p>
+            Link your verified Slack account to connect project conversations. Kiln Studio continues
+            to control project membership and message access.
+          </p>
+          {slackStatus && (
+            <p
+              className={
+                slackStatus === "installed" || slackStatus === "linked"
+                  ? "form-success"
+                  : "form-error"
+              }
+              role="status"
+            >
+              {slackStatus === "installed"
+                ? "Slack workspace connected."
+                : slackStatus === "linked"
+                  ? "Slack account linked."
+                  : slackStatus === "cancelled"
+                    ? "Slack authorization was cancelled."
+                    : slackStatus === "wrong_workspace"
+                      ? "Use the Slack workspace installed by the studio admin."
+                      : slackStatus === "team_profile_required"
+                        ? "A team profile is required before linking Slack."
+                        : "Slack could not be connected. Check the app configuration and try again."}
+            </p>
+          )}
+        </div>
+        <div className="slack-connection-actions">
+          {scope === "admin" && (
+            <a className="button-secondary" href="/api/slack/install">
+              Install or reconnect workspace
+            </a>
+          )}
+          <a className="button-secondary" href="/api/slack/connect">
+            Link my Slack account
+          </a>
+        </div>
+      </section>
 
       <section className="team-panel" style={{ marginTop: "24px" }}>
         <div className="ops-card-header">
@@ -382,171 +432,207 @@ export function TeamWorkspace({
       <section className="team-workspace-grid">
         <div className="team-panel">
           <div className="ops-card-header">
-            <h3>Team roster</h3>
-            <span>{teamMembers.length} members</span>
+            <h3>Team directory</h3>
+            <span>{teamMemberOptions?.length ?? 0} active members</span>
           </div>
-
-          <div className="team-list">
-            {teamMembers.map((member) => (
-              <div className="team-member" key={member.id}>
-                <div>
-                  <strong>{member.name}</strong>
-                  <p>
-                    {member.title} · {member.specialty}
-                  </p>
-                </div>
-                <div className="member-assignment">
-                  <span className={`availability-pill ${getAvailabilityClassName(member.availability)}`}>
-                    {getAvailabilityLabel(member.availability)}
-                  </span>
-                  <div className="team-projects">
-                    {member.assignedProjects.length === 0 ? (
-                      <span className="empty-tag">Unassigned</span>
-                    ) : (
-                      member.assignedProjects.map((project) => (
-                        <span key={`${member.id}-${project.project}`} className="project-tag">
-                          {project.project} · {project.role}
-                        </span>
-                      ))
-                    )}
+          {teamMemberOptionsError ? (
+            <p className="form-error" role="alert">{teamMemberOptionsError}</p>
+          ) : !teamMemberOptions?.length ? (
+            <p className="empty-state">No active team members are available.</p>
+          ) : (
+            <div className="team-list">
+              {teamMemberOptions.map((member) => (
+                <div className="team-member" key={member.id}>
+                  <div>
+                    <strong>{member.full_name}</strong>
+                    <p>{[member.title, member.specialty].filter(Boolean).join(" · ") || member.email}</p>
                   </div>
+                  <span className="availability-pill">{member.availability_status.replace("_", " ")}</span>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
-
         <div className="team-panel">
           <div className="ops-card-header">
-            <h3>Sample channel preview</h3>
-            <span>Illustrative data</span>
+            <h3>Project collaboration</h3>
+            <span>Database-backed membership and chat</span>
           </div>
-
-          <div className="channel-list">
-            {channels.map((channel) => (
-              <div key={channel.id} className={`channel-row channel-${channel.type}`}>
-                <div>
-                  <strong>#{channel.name}</strong>
-                  <p>{channel.description}</p>
-                </div>
-                <div className="channel-meta">
-                  <span>{channel.members.length} members</span>
-                  <span>{channel.moderator}</span>
-                </div>
-              </div>
-            ))}
-          </div>
+          <p className="empty-state">
+            Project channels are the durable collaboration rooms. Membership changes control access to
+            each channel and its history.
+          </p>
         </div>
       </section>
 
       <section className="team-chat-grid">
-        <div className="ops-card">
-          <div className="ops-card-header">
-            <h3>Sample project chat preview</h3>
-            <span>Local only - not persistent</span>
-          </div>
-          <div className="team-channel-list">
-            {projectChannels.map((channel) => (
-              <div key={channel.id} className="project-channel-card">
-                <div className="project-channel-head">
-                  <strong>#{channel.name}</strong>
-                  <span>{channel.moderator}</span>
-                </div>
-                <p>{channel.description}</p>
-                <ul>
-                  {channel.members.map((member) => (
-                    <li key={`${channel.id}-${member}`}>{member}</li>
-                  ))}
-                </ul>
-                <div className="channel-thread">
-                  {channel.messages.map((message) => (
-                    <div key={message.id} className={`chat-message ${message.side}`}>
+        {liveProjectChannels.map((channel) => {
+          const canManageTeam =
+            (scope === "admin" || channel.is_project_manager) &&
+            channel.project_status === "active";
+          const channelMembers = membersByProject[channel.project_id] ?? channel.members;
+          const channelMessages = messagesByChannel[channel.id] ?? channel.messages;
+          const assignedMemberIds = new Set(channelMembers.map((member) => member.team_member_id));
+          const availableMembers = (teamMemberOptions ?? []).filter(
+            (member) => !assignedMemberIds.has(member.id),
+          );
+
+          return (
+            <article key={channel.id} className="project-channel-card">
+              <div className="project-channel-head">
+                <strong>#{channel.channel_name}</strong>
+                <span>
+                  {channel.is_archived ? "Archived" : `${channelMembers.length} members`}
+                </span>
+              </div>
+              <p>{channel.description}</p>
+
+              <div className="project-members-list">
+                <h4>Project team</h4>
+                {channelMembers.map((member) => (
+                  <div className="project-member-row" key={member.id}>
+                    <div>
+                      <strong>{member.full_name}</strong>
+                      <span>
+                        {member.role_name === "PROJECT_MANAGER"
+                          ? "Project manager"
+                          : formatRoleName(member.role_name)}
+                      </span>
+                    </div>
+                    {canManageTeam && member.role_name !== "PROJECT_MANAGER" && (
+                      <button
+                        className="button-secondary"
+                        type="button"
+                        disabled={savingMembershipProjectId === channel.project_id}
+                        onClick={() =>
+                          void removeProjectMember(
+                            channel.project_id,
+                            member.team_member_id,
+                            member.full_name,
+                          )
+                        }
+                      >
+                        Remove
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              {canManageTeam && (
+                <form
+                  className="project-controls project-member-form"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    void addProjectMember(channel.project_id, event.currentTarget);
+                  }}
+                >
+                  <label>
+                    Add team member
+                    <select
+                      name="team_member_id"
+                      required
+                      defaultValue=""
+                      disabled={savingMembershipProjectId === channel.project_id || !availableMembers.length}
+                    >
+                      <option value="" disabled>
+                        {availableMembers.length ? "Choose a team member" : "Everyone is assigned"}
+                      </option>
+                      {availableMembers.map((member) => (
+                        <option key={member.id} value={member.id}>
+                          {member.full_name} ({member.email})
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    Role
+                    <select
+                      name="role_name"
+                      defaultValue="TEAM_MEMBER"
+                      disabled={savingMembershipProjectId === channel.project_id}
+                    >
+                      {projectMemberRoles.map((role) => (
+                        <option key={role} value={role}>
+                          {formatRoleName(role)}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <button
+                    className="button-secondary"
+                    type="submit"
+                    disabled={
+                      savingMembershipProjectId === channel.project_id ||
+                      !availableMembers.length ||
+                      !teamMemberOptions?.length
+                    }
+                  >
+                    Add to project
+                  </button>
+                </form>
+              )}
+              {collaborationErrors[channel.project_id] && (
+                <p className="form-error" role="alert">{collaborationErrors[channel.project_id]}</p>
+              )}
+
+              <div className="channel-thread" aria-live="polite">
+                {channelMessages.length ? (
+                  channelMessages.map((message) => (
+                    <div key={message.id} className="chat-message">
                       <div className="message-meta">
-                        <strong>{message.sender}</strong>
-                        <span>{message.role}</span>
-                        <time>{message.time}</time>
+                        <strong>{message.sender_name}</strong>
+                        {message.sender_role && <span>{message.sender_role}</span>}
+                        <time dateTime={message.created_at}>
+                          {new Date(message.created_at).toLocaleString()}
+                        </time>
                       </div>
                       <p>{message.body}</p>
                     </div>
-                  ))}
-                </div>
-                <div className="chat-composer">
+                  ))
+                ) : (
+                  <p className="empty-state">No messages yet. Start the project conversation.</p>
+                )}
+              </div>
+
+              {channel.project_status === "active" ? (
+                <form
+                  className="chat-composer"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    void sendMessage(channel);
+                  }}
+                >
                   <input
-                    aria-label={`Message ${channel.name}`}
+                    aria-label={`Message ${channel.channel_name}`}
                     value={drafts[channel.id] ?? ""}
+                    maxLength={2000}
                     onChange={(event) =>
                       setDrafts((currentDrafts) => ({
                         ...currentDrafts,
                         [channel.id]: event.target.value,
                       }))
                     }
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter") {
-                        sendMessage(channel.id);
-                      }
-                    }}
-                    placeholder={`Message ${channel.name}…`}
+                    disabled={savingMessageChannelId === channel.id}
+                    placeholder={`Message ${channel.channel_name}…`}
                   />
-                  <button className="button-primary" type="button" onClick={() => sendMessage(channel.id)}>
+                  <button
+                    className="button-primary"
+                    type="submit"
+                    disabled={savingMessageChannelId === channel.id || !drafts[channel.id]?.trim()}
+                  >
                     Send
                   </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="ops-card">
-          <div className="ops-card-header">
-            <h3>General and announcements</h3>
-            <span>{channels.filter((channel) => channel.type !== ChannelType.PROJECT).length} channels</span>
-          </div>
-
-          {channels
-          .filter((channel) => channel.type !== ChannelType.PROJECT)
-            .map((channel) => (
-              <div key={channel.id} className="general-channel">
-                <div className="project-channel-head">
-                  <strong>#{channel.name}</strong>
-                  <span>{channel.type === ChannelType.ANNOUNCEMENT ? "Admin only" : "All team"}</span>
-                </div>
-                <p>{channel.description}</p>
-                <div className="channel-thread">
-                  {channel.messages.map((message) => (
-                    <div key={message.id} className={`chat-message ${message.side}`}>
-                      <div className="message-meta">
-                        <strong>{message.sender}</strong>
-                        <span>{message.role}</span>
-                        <time>{message.time}</time>
-                      </div>
-                      <p>{message.body}</p>
-                    </div>
-                  ))}
-                </div>
-                <div className="chat-composer">
-                  <input
-                    aria-label={`Message ${channel.name}`}
-                    value={drafts[channel.id] ?? ""}
-                    onChange={(event) =>
-                      setDrafts((currentDrafts) => ({
-                        ...currentDrafts,
-                        [channel.id]: event.target.value,
-                      }))
-                    }
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter") {
-                        sendMessage(channel.id);
-                      }
-                    }}
-                    placeholder={`Message ${channel.name}…`}
-                  />
-                  <button className="button-primary" type="button" onClick={() => sendMessage(channel.id)}>
-                    Send
-                  </button>
-                </div>
-              </div>
-            ))}
-        </div>
+                </form>
+              ) : (
+                <p className="empty-state">This completed project channel is read-only.</p>
+              )}
+              {collaborationErrors[channel.id] && (
+                <p className="form-error" role="alert">{collaborationErrors[channel.id]}</p>
+              )}
+            </article>
+          );
+        })}
       </section>
     </main>
   );
