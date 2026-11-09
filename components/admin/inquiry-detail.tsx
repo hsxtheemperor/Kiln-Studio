@@ -7,6 +7,14 @@ import { INQUIRY_STATUSES } from "@/lib/inquiries/schema";
 import { PRIORITY_MAX, PRIORITY_UNKNOWN, getPriorityLabel } from "@/lib/project-priority";
 
 type InquiryDetailPayload = InquiryRow & {
+  reference_files?: Array<{
+    id: string;
+    file_name: string;
+    content_type: "image/jpeg" | "image/png" | "image/webp";
+    byte_size: number;
+    status: "awaiting_upload" | "queued" | "ready" | "rejected";
+    signed_url: string | null;
+  }>;
   inquiry_briefs?: Array<{
     design_goal: string | null;
     brand_message: string | null;
@@ -250,6 +258,27 @@ export function InquiryDetail({ id }: { id: string }) {
                   <div><span>Outcome</span><strong>{brief.desired_outcomes || "—"}</strong></div>
                   <div><span>References</span><strong>{brief.references || "—"}</strong></div>
                   <div><span>Time budget</span><strong>{brief.time_budget || "—"}</strong></div>
+                </div>
+              </div>
+            )}
+            {inquiry.reference_files && inquiry.reference_files.length > 0 && (
+              <div className="detail-section">
+                <span className="detail-section-label">Visual references</span>
+                <div className="detail-reference-files">
+                  {inquiry.reference_files.map((file) => (
+                    <div className="detail-reference-file" key={file.id}>
+                      {file.signed_url ? (
+                        <a href={file.signed_url} target="_blank" rel="noreferrer">
+                          <img src={file.signed_url} alt={file.file_name} />
+                          <span>{file.file_name}</span>
+                        </a>
+                      ) : (
+                        <strong>
+                          {file.file_name} · {file.status === "rejected" ? "Rejected" : "Processing"}
+                        </strong>
+                      )}
+                    </div>
+                  ))}
                 </div>
               </div>
             )}

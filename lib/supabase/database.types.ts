@@ -114,6 +114,25 @@ export type InquiryBriefInsert = {
   design_complexity: number | null;
 };
 
+export type InquiryReferenceFileStatus =
+  | "awaiting_upload"
+  | "queued"
+  | "ready"
+  | "rejected";
+
+export type InquiryReferenceFileRow = {
+  id: string;
+  inquiry_id: string | null;
+  object_path: string;
+  file_name: string;
+  content_type: "image/jpeg" | "image/png" | "image/webp";
+  byte_size: number;
+  status: InquiryReferenceFileStatus;
+  failure_reason: string | null;
+  created_at: string;
+  processed_at: string | null;
+};
+
 export type ProjectRevenueRow = {
   id: string;
   project_id: string;
@@ -262,7 +281,8 @@ export type SlackInstallationRow = {
   workspace_id: string;
   workspace_name: string;
   bot_user_id: string;
-  encrypted_bot_token: string;
+  encrypted_bot_token: string | null;
+  is_active: boolean;
   installed_by: string;
   installed_at: string;
   updated_at: string;
@@ -284,7 +304,7 @@ export type SlackProjectChannelRow = {
 
 export type SlackProjectSyncJobRow = {
   project_id: string;
-  action: "create" | "archive";
+  action: "create" | "archive" | "sync_members";
   status: "pending" | "processing" | "retry" | "completed" | "failed";
   attempt_count: number;
   available_at: string;
@@ -443,6 +463,15 @@ export type Database = {
         Update: Partial<InquiryBriefRow>;
         Relationships: [];
       };
+      inquiry_reference_files: {
+        Row: InquiryReferenceFileRow;
+        Insert: Omit<InquiryReferenceFileRow, "created_at" | "processed_at"> & {
+          created_at?: string;
+          processed_at?: string | null;
+        };
+        Update: Partial<InquiryReferenceFileRow>;
+        Relationships: [];
+      };
       project_revenue: {
         Row: ProjectRevenueRow;
         Insert: Omit<ProjectRevenueRow, "id" | "created_at"> & {
@@ -577,9 +606,10 @@ export type Database = {
       };
       slack_installations: {
         Row: SlackInstallationRow;
-        Insert: Omit<SlackInstallationRow, "installed_at" | "updated_at"> & {
+        Insert: Omit<SlackInstallationRow, "installed_at" | "updated_at" | "is_active"> & {
           installed_at?: string;
           updated_at?: string;
+          is_active?: boolean;
         };
         Update: Partial<SlackInstallationRow>;
         Relationships: [];
@@ -720,6 +750,10 @@ export type Database = {
     Functions: {
       create_public_inquiry_with_brief: {
         Args: { p_inquiry: Json; p_brief: Json };
+        Returns: string;
+      };
+      create_public_inquiry_with_references: {
+        Args: { p_inquiry: Json; p_brief: Json; p_reference_ids: string[] };
         Returns: string;
       };
       list_project_channels: {

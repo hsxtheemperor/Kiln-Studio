@@ -5,10 +5,14 @@ import { NextResponse } from "next/server";
 
 const mocks = vi.hoisted(() => ({
   requireDesigner: vi.fn(),
+  checkProjectMessageRateLimit: vi.fn(),
 }));
 
 vi.mock("@/lib/auth/require-designer", () => ({
   requireDesigner: mocks.requireDesigner,
+}));
+vi.mock("@/lib/rate-limit/project-messages", () => ({
+  checkProjectMessageRateLimit: mocks.checkProjectMessageRateLimit,
 }));
 
 import {
@@ -49,6 +53,12 @@ describe("Project collaboration endpoints", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     supabase.from.mockReset();
+    mocks.checkProjectMessageRateLimit.mockResolvedValue({
+      success: true,
+      limit: 30,
+      remaining: 29,
+      reset: Date.now() + 60_000,
+    });
     mocks.requireDesigner.mockResolvedValue({
       authorized: true,
       supabase,
@@ -114,6 +124,41 @@ describe("Project collaboration endpoints", () => {
       sender_role: "DESIGN_LEAD",
       body: "Share the revised direction.",
     });
+  });
+
+  it("rejects messages when the Upstash rate limit is exceeded", async () => {
+    mocks.checkProjectMessageRateLimit.mockResolvedValue({
+      success: false,
+      limit: 30,
+      remaining: 0,
+      reset: Date.now() + 60_000,
+    });
+    const project = query({ data: { id: projectId, status: "active" }, error: null });
+    const channel = query({
+      data: { id: channelId, project_id: projectId, channel_type: "project", is_archived: false },
+      error: null,
+    });
+    const sender = query({ data: { id: teamMemberId, full_name: "Studio Member" }, error: null });
+    const membership = query({ data: { role_name: "DESIGN_LEAD" }, error: null });
+    supabase.from
+      .mockReturnValueOnce(project.builder)
+      .mockReturnValueOnce(channel.builder)
+      .mockReturnValueOnce(sender.builder)
+      .mockReturnValueOnce(membership.builder);
+
+    const response = await sendProjectMessage(
+      new Request(`https://kiln-studio.test/api/projects/${projectId}/messages`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ channel_id: channelId, body: "A rate-limited message" }),
+      }),
+      { params: Promise.resolve({ id: projectId }) },
+    );
+
+    expect(response.status).toBe(429);
+    expect(response.headers.get("Retry-After")).toBeTruthy();
+    expect(supabase.from).toHaveBeenCalledTimes(4);
+    expect(mocks.checkProjectMessageRateLimit).toHaveBeenCalledWith(user.id);
   });
 
   it("adds a project member with a selected role", async () => {

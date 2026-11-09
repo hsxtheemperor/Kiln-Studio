@@ -33,27 +33,33 @@ be easy to explain in a recruiter-facing walkthrough.
   deadline; only studio members can read the system activity feed.
 - The admin dashboard shows the latest system activity and streams new database
   audit events live through Supabase Realtime.
+- Project chat messages are stored in Supabase and streamed to the website with
+  Realtime. When Slack is configured, app messages sync through a durable
+  outbox, Slack messages are stored back in Supabase, and private Slack project
+  channel membership follows linked active project members.
+- Designers link their Slack account from `/designer/team`; a studio member
+  installs or reconnects the workspace from `/admin/team`.
 - Designer priority queue, client-request detail, and request-message endpoint.
-- A separate Team page for admin and designer workspaces, with sample roster,
-  assignments, availability, channel previews, and local-in-browser demo chat.
+- Admin and designer Team pages with live project membership, project roles,
+  channel history, PM assignment, and completion controls. Availability editing
+  and general/announcement chat remain future work.
 - Supabase migrations for inquiry briefs and priority, projects/channels,
   database-level finance and quarterly reports, client/company records, team
   assignments, request messages, and access policies.
 - Vercel Speed Insights integration.
 
-The Team roster and chat UI still use in-memory sample data. The live Team page
-loads ordered project channels and exposes admin PM/deadline controls and
-PM-only completion. Project-team assignment editing is not yet connected.
 Finance tables and database functions exist but do not yet have a
 finance UI/workflow. Legacy finance summaries remain pending data reconciliation.
-See
+The Slack worker requires the latest migrations, deployment secrets, a public
+Slack Events URL, and a configured cron scheduler before it can synchronize a
+real workspace. See
 [docs/DEMO.md](./docs/DEMO.md) and [docs/PLAN.md](./docs/PLAN.md) for details.
 
 ## Local development
 
 Requirements: Node.js supported by the installed Next.js version, pnpm, and a
-configured Supabase project. Upstash is also required for the public inquiry
-rate limiter.
+configured Supabase project. Upstash is required for public inquiry and
+authenticated project-message rate limits.
 
 1. Install dependencies:
 
@@ -109,9 +115,17 @@ availability, and local network before debugging credentials.
 | `GET /api/admin/inquiries/:id` | Studio member | Inquiry and brief detail. |
 | `PATCH /api/admin/inquiries/:id` | Studio member | Updates inquiry status and/or priority. |
 | `GET`, `POST /api/designer/messages?inquiry_id=:id` | Designer or studio member | Reads or posts messages for an inquiry. |
+| `GET /api/slack/status` | Designer or studio member | Reports whether the workspace is installed and the current user's Slack identity is linked. |
+| `GET /api/slack/install`, `GET /api/slack/connect` | Studio member / designer | Starts verified Slack workspace installation or user linking. |
+| `GET /api/slack/callback` | Signed-in user | Completes the OAuth callback and stores encrypted tokens or verified identity mapping. |
+| `POST /api/slack/events` | Slack signature | Verifies Slack Events API requests, handles uninstall, and persists eligible messages. |
+| `POST /api/slack/sync` | Cron bearer secret | Processes project-channel, membership-reconciliation, and message-outbox jobs. |
+| `POST /api/projects/:id/messages` | Designer or studio member | Stores project messages in Supabase and enqueues Slack delivery. |
+| `POST`, `DELETE /api/projects/:id/members` | Project manager or studio member | Updates project membership/roles; triggers Slack membership reconciliation. |
 
-The message endpoint is distinct from the Team demo chat. Team chat currently
-does not persist to Supabase.
+Slack member mapping is required for workspace participation. Project manager
+and member roles remain authoritative in Kiln Studio; standard Slack channel
+membership does not provide equivalent per-project moderator permissions.
 
 ## Verification
 

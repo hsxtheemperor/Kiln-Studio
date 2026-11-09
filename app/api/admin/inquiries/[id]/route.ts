@@ -3,6 +3,8 @@ import { z } from "zod";
 import { requireStudioMember } from "@/lib/auth/require-studio-member";
 import { InquiryStatusSchema } from "@/lib/inquiries/schema";
 import { readJsonBody } from "@/lib/http/read-json";
+import { INQUIRY_REFERENCE_BUCKET } from "@/lib/inquiries/reference-file-constants";
+import { createSupabaseServiceClient } from "@/lib/supabase/service";
 
 const IdSchema = z.string().uuid();
 const UpdateSchema = z
@@ -60,6 +62,57 @@ export async function GET(_request: Request, { params }: RouteContext) {
     console.error("Admin inquiry priority detail could not be loaded.", briefError.message);
   }
 
+  let referenceFiles;
+  try {
+    const service = createSupabaseServiceClient();
+    const { data: files, error: filesError } = await service
+      .from("inquiry_reference_files")
+      .select("id, file_name, content_type, byte_size, status, object_path, created_at")
+      .eq("inquiry_id", id)
+      .order("created_at", { ascending: true });
+
+    if (filesError) {
+      throw filesError;
+    }
+
+    referenceFiles = await Promise.all(
+      (files ?? []).map(async (file) => {
+        if (file.status !== "ready") {
+          return {
+            id: file.id,
+            file_name: file.file_name,
+            content_type: file.content_type,
+            byte_size: file.byte_size,
+            status: file.status,
+            signed_url: null,
+          };
+        }
+
+        const { data: signedFile, error: signedUrlError } = await service.storage
+          .from(INQUIRY_REFERENCE_BUCKET)
+          .createSignedUrl(file.object_path, 10 * 60);
+        if (signedUrlError || !signedFile) {
+          throw signedUrlError ?? new Error("Reference image URL could not be created.");
+        }
+
+        return {
+          id: file.id,
+          file_name: file.file_name,
+          content_type: file.content_type,
+          byte_size: file.byte_size,
+          status: file.status,
+          signed_url: signedFile.signedUrl,
+        };
+      }),
+    );
+  } catch (error) {
+    console.error("Admin inquiry reference images could not be loaded.", error);
+    return NextResponse.json(
+      { error: "Inquiry reference images are temporarily unavailable." },
+      { status: 503, headers: { "Cache-Control": "no-store" } },
+    );
+  }
+
   const safeBriefData: Array<{
     id: string;
     inquiry_id: string;
@@ -83,7 +136,7 @@ export async function GET(_request: Request, { params }: RouteContext) {
   }] : [];
 
   return NextResponse.json(
-    { item: { ...data, inquiry_briefs: safeBriefData } },
+    { item: { ...data, inquiry_briefs: safeBriefData, reference_files: referenceFiles } },
     { headers: { "Cache-Control": "no-store" } },
   );
 }

@@ -143,8 +143,17 @@ channel. Project completion requires its PM, archives the channel against new
 messages, and retains history only for current members. Project channels are
 ranked by priority descending, then nearest deadline via
 `list_project_channels()`. Availability editing, general/announcement chat,
-message pagination, and channel-message realtime updates are not implemented.
+and message pagination are not implemented. Channel messages stream over
+Supabase Realtime.
 See [DATABASE.md](./DATABASE.md) and [PLAN.md](./PLAN.md).
+
+**Slack synchronization:** workspace installation and designer account linking
+use verified OAuth. The Postgres outbox creates private project channels,
+reconciles membership for linked active project members, and delivers app
+messages. Verified Slack message events are deduplicated and stored in
+Postgres. Upstash Redis is used for message rate limits, not durable chat
+storage. The standard Slack channel API does not mirror Kiln's role-based
+moderator permissions; database authorization remains authoritative.
 
 Project channel descriptions are generated from the related inquiry and brief
 and refreshed if inquiry/brief details change. System audit events record the

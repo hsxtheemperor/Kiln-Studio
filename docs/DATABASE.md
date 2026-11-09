@@ -60,26 +60,26 @@ Three layers decide every request, in this order:
 
 ## Demo versus production
 
-**Direction, not committed behavior.** Kiln-Studio is a demo. Its team
-channels (`project_channels`, `project_channel_members`,
-`project_channel_messages` and the System channel) exist so the demo can show
-project chat, membership rules and an activity feed without any external
-service. In a real production deployment, team and project channels are
-expected to be provided by **Slack**, not by these tables.
+Kiln Studio's Postgres channel tables own project membership and durable
+message history. Slack is an optional transport/collaboration mirror, not a
+replacement for these records. The app remains usable when Slack is unavailable.
 
 What that implies for the database:
 
-- Inquiries, projects, project members, finance and reports stay the source of
-  truth. Slack would be a delivery surface, not a data store for them.
-- The channel tables would be replaced by a thin mapping from a project to a
-  Slack channel identifier. The triggers that create channels and synchronize
-  membership (migration 8) would become server-side Slack API calls.
+- Inquiries, projects, project members, channels, messages, finance and reports
+  stay the source of truth. Slack is a delivery surface, not their data store.
+- `slack_project_channels` maps each eligible app project channel to a private
+  Slack channel. Database triggers enqueue channel creation and membership
+  reconciliation; a server-side worker performs Slack API calls.
 - The audit trail (see [Audit trail](#audit-trail-system-activity)) stays in the
   database. The admin activity feed could additionally be posted to a Slack
   channel.
-- Do not build features that depend on the channel tables persisting. Keep
-  channel logic separate from project and finance logic so that replacing it is
-  a contained change.
+- App messages enter Postgres first, then an outbox worker sends them to Slack.
+  Verified Slack message events are deduplicated and stored in Postgres before
+  the app Realtime feed delivers them to website clients.
+- Slack's standard channel APIs do not expose the database's per-project
+  moderator/role controls. Keep permissions enforced by app authorization and
+  RLS; Slack channel membership only mirrors active, linked project members.
 
 ## Naming notes
 
@@ -161,10 +161,15 @@ operational tables by triggers, not by foreign keys.
 13. [`20261108050000_align_inquiry_priority_and_finance.sql`](../supabase/migrations/20261108050000_align_inquiry_priority_and_finance.sql): renames `project_briefs` to `inquiry_briefs`, moves priority to inquiries, creates an atomic inquiry/brief RPC, restricts activity-feed access to studio members, and adds normalized project-finance and quarterly-report tables/functions.
 14. [`20261108060000_enable_system_activity_realtime.sql`](../supabase/migrations/20261108060000_enable_system_activity_realtime.sql): adds `system_activity_logs` to the Supabase Realtime publication.
 15. [`20261108070000_restrict_membership_changes_to_active_projects.sql`](../supabase/migrations/20261108070000_restrict_membership_changes_to_active_projects.sql): prevents project member additions or role changes after completion while allowing membership removal to revoke access.
+16. [`20261108080000_add_slack_sync_foundation.sql`](../supabase/migrations/20261108080000_add_slack_sync_foundation.sql): adds encrypted Slack installation and user mappings, project channel mappings, message outbox, event receipts, and service-only synchronization functions.
+17. [`20261108090000_enable_project_message_realtime.sql`](../supabase/migrations/20261108090000_enable_project_message_realtime.sql): adds project chat messages to Realtime and reclaims stale sync/outbox jobs.
+18. [`20261109000000_reconcile_slack_project_members.sql`](../supabase/migrations/20261109000000_reconcile_slack_project_members.sql): reconciles Slack channel membership after project membership, account-link, team-active-state, and workspace-installation changes; supports installation revocation and reconnection.
+19. [`20261109010000_add_inquiry_reference_uploads.sql`](../supabase/migrations/20261109010000_add_inquiry_reference_uploads.sql): creates a private image bucket and server-only reference metadata; links uploads atomically to inquiries and queues verification.
 
 Migrations 9 to 12 harden and refine migration 8; migrations 13 to 15 finalize
 inquiry priority, activity-feed access/Realtime, finance, and project-team
-membership boundaries.
+membership boundaries. Migrations 16 to 18 add the optional Slack sync layer
+while keeping Postgres authoritative.
 
 Do not treat edits made only in the Supabase dashboard as the source of truth.
 Test a fresh database and a database upgraded through the full migration chain.
@@ -200,6 +205,12 @@ project identifiers into project docs that are intended for public review.
 | `project_channels` | General, announcement, system, or project channel; project channels reference `project_id`, carry a refreshed inquiry/brief description, and can be archived. |
 | `project_channel_members` | Associates a team member to a channel with `moderator` or `member` role. |
 | `project_channel_messages` | Channel messages; inserts must match the sender's team-member identity and archived project channels reject new posts. |
+| `slack_installations` | Single active workspace installation; the bot token is encrypted at rest and cleared on the Slack uninstall event. |
+| `slack_user_mappings` | Verified Slack account-to-team-member mapping used for project channel invitations and inbound message attribution. |
+| `slack_project_channels` | Maps an app project channel to its private Slack channel. |
+| `slack_project_sync_jobs` | Durable channel create/archive/member-reconciliation work with retry state. |
+| `slack_message_outbox` | Durable app-to-Slack delivery work, with retry and provider timestamp tracking. |
+| `slack_event_receipts`, `slack_provider_messages` | Idempotency receipts and provider-message-to-app-message mapping for inbound Slack events. |
 | `project_revenue` | Project receipts and refund adjustments. |
 | `project_payouts` | Project member payouts, including planned-to-paid transitions and refund adjustments. |
 | `expenses` | One-time studio overhead expenses; rows are append-only except for a one-way void operation. |
@@ -673,8 +684,15 @@ Required environment variables:
 | `NEXT_PUBLIC_SUPABASE_URL` | Supabase project URL. |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Browser-safe key constrained by RLS. |
 | `SUPABASE_SERVICE_ROLE_KEY` | Server-only privileged operation; never `NEXT_PUBLIC_`. |
-| `UPSTASH_REDIS_REST_URL` | Shared inquiry rate-limit store. |
+| `UPSTASH_REDIS_REST_URL` | Shared inquiry and project-message rate-limit store. |
 | `UPSTASH_REDIS_REST_TOKEN` | Server-only Upstash credential. |
+| `SLACK_CLIENT_ID`, `SLACK_CLIENT_SECRET` | Slack OAuth app credentials; server-only. |
+| `SLACK_REDIRECT_URI` | Exact OAuth callback URL registered in the Slack app. |
+| `SLACK_SIGNING_SECRET` | Verifies Slack Events API requests. |
+| `SLACK_OAUTH_STATE_SECRET` | Signs short-lived OAuth state; at least 32 characters. |
+| `SLACK_TOKEN_ENCRYPTION_KEY` | Base64-encoded 32-byte AES-256-GCM key. Keep stable to decrypt the stored bot token. |
+| `SLACK_SYNC_SECRET` | Optional bearer secret for manual worker invocation. |
+| `CRON_SECRET` | Protects Vercel Cron endpoints, including Slack outbox processing. |
 
 If Supabase Auth reports a fetch/network failure (`status: 0`), first verify the
 project URL and project availability and test the local network/DNS/VPN. That
@@ -684,6 +702,6 @@ error occurs before a credentials or app-role decision can be made.
 
 This is a fictional portfolio demo. Use synthetic inquiry, team and finance
 data; do not ask visitors for secrets, payment details, or sensitive client
-materials. Keep logs free of request contents and tokens. The repository
-documents a 14-day demo inquiry retention target; an automated cleanup mechanism
-must be implemented and verified before treating that target as operational.
+materials. Keep logs free of request contents and tokens. The repository includes an automated 14-day demo inquiry cleanup route. Keep
+the cron secret private and verify scheduled execution in the deployment before
+treating retention as operational.

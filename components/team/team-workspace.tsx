@@ -48,6 +48,12 @@ export function TeamWorkspace({
   const router = useRouter();
   const searchParams = useSearchParams();
   const slackStatus = searchParams.get("slack");
+  const [slackConnection, setSlackConnection] = useState<{
+    workspaceInstalled: boolean;
+    accountLinked: boolean;
+    workspaceName: string | null;
+  } | null>(null);
+  const [slackConnectionError, setSlackConnectionError] = useState("");
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [projectError, setProjectError] = useState("");
   const [savingProjectId, setSavingProjectId] = useState<string | null>(null);
@@ -73,6 +79,46 @@ export function TeamWorkspace({
       Object.fromEntries(liveProjectChannels.map((channel) => [channel.project_id, channel.members])),
     );
   }, [liveProjectChannels]);
+
+  useEffect(() => {
+    let active = true;
+    void fetch("/api/slack/status", { cache: "no-store" })
+      .then(async (response) => {
+        const payload: unknown = await response.json();
+        if (!response.ok) throw new Error(getErrorMessage(payload, "Slack status is unavailable."));
+        if (
+          typeof payload === "object" &&
+          payload !== null &&
+          "workspaceInstalled" in payload &&
+          typeof payload.workspaceInstalled === "boolean" &&
+          "accountLinked" in payload &&
+          typeof payload.accountLinked === "boolean" &&
+          "workspaceName" in payload &&
+          (typeof payload.workspaceName === "string" || payload.workspaceName === null)
+        ) {
+          if (active) {
+            setSlackConnection({
+              workspaceInstalled: payload.workspaceInstalled,
+              accountLinked: payload.accountLinked,
+              workspaceName: payload.workspaceName,
+            });
+          }
+          return;
+        }
+        throw new Error("Slack status response was invalid.");
+      })
+      .catch((error: unknown) => {
+        if (active) {
+          setSlackConnectionError(
+            error instanceof Error ? error.message : "Slack connection status is unavailable.",
+          );
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (!liveProjectChannels.length) return;
@@ -284,6 +330,18 @@ export function TeamWorkspace({
             Link your verified Slack account to connect project conversations. Kiln Studio continues
             to control project membership and message access.
           </p>
+          {slackConnectionError && (
+            <p className="form-error" role="status">{slackConnectionError}</p>
+          )}
+          {slackConnection && (
+            <p className={slackConnection.accountLinked ? "form-success" : "empty-state"} role="status">
+              {slackConnection.accountLinked
+                ? `Slack account linked${slackConnection.workspaceName ? ` to ${slackConnection.workspaceName}` : ""}.`
+                : slackConnection.workspaceInstalled
+                  ? "Workspace connected. Link your Slack account to join project channels."
+                  : "No Slack workspace is currently connected."}
+            </p>
+          )}
           {slackStatus && (
             <p
               className={
@@ -303,7 +361,9 @@ export function TeamWorkspace({
                       ? "Use the Slack workspace installed by the studio admin."
                       : slackStatus === "team_profile_required"
                         ? "A team profile is required before linking Slack."
-                        : "Slack could not be connected. Check the app configuration and try again."}
+                              : slackStatus === "workspace_change_required"
+                                ? "This app is already connected to another workspace. Disconnect it there before changing workspaces."
+                              : "Slack could not be connected. Check the app configuration and try again."}
             </p>
           )}
         </div>
@@ -313,9 +373,11 @@ export function TeamWorkspace({
               Install or reconnect workspace
             </a>
           )}
-          <a className="button-secondary" href="/api/slack/connect">
-            Link my Slack account
-          </a>
+          {slackConnection?.workspaceInstalled && (
+            <a className="button-secondary" href="/api/slack/connect">
+              {slackConnection.accountLinked ? "Relink my Slack account" : "Link my Slack account"}
+            </a>
+          )}
         </div>
       </section>
 

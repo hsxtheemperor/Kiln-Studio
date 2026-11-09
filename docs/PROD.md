@@ -1,8 +1,8 @@
 # Production direction: durable team collaboration and Slack integration
 
-The Team workspace now uses durable project membership and message storage for
-project channels. Slack can be added as an external collaboration surface
-without making Slack the source of truth for project permissions.
+The Team workspace uses durable project membership and message storage for
+project channels. Slack is an optional collaboration surface, while Supabase
+remains authoritative for project membership, roles, and message history.
 
 ## Recommended source of truth
 
@@ -40,22 +40,28 @@ project-channel foundation. The current message view loads the latest 100
 messages per visible project channel; pagination and realtime updates remain
 future work.
 
-### Stage 2: Integrate Slack
+### Slack integration status
 
-- Create a Slack app with only the required scopes and an explicit workspace
-  installation process.
-- Map Kiln Studio users to Slack user IDs using verified OAuth identity; do not
-  assume matching email alone is sufficient.
-- Create or map a Slack channel per eligible project and store its workspace and
-  channel IDs in the database.
-- Send app messages to Slack through a server-side integration worker.
-- Receive Slack events through a public webhook endpoint that verifies Slack's
-  request signature and timestamp before processing.
-- Persist an idempotency key/event ID and provider message ID to deduplicate
-  retries and prevent sync loops.
-- Track delivery/sync state and retries; surface failed syncs instead of
-  silently losing messages.
-- Keep provider credentials in server-side secret storage.
+The repository includes Slack OAuth installation and designer account linking,
+encrypted bot-token storage, workspace and user mappings, project-channel
+creation, channel membership reconciliation, app-to-Slack message delivery,
+Slack-to-Supabase message ingestion, event deduplication, retries, and an
+authenticated sync worker. App chat messages are stored in Supabase first and
+streamed to the website with Supabase Realtime; Slack is synchronized
+asynchronously through the outbox.
+
+The worker is scheduled once per minute by Vercel Cron. Production deployment
+requires every `SLACK_*` secret in `.env.example`, `CRON_SECRET`, an active
+Supabase migration chain, the callback URL registered in the Slack app, and a
+public Events API request URL for `/api/slack/events`. The Slack app must
+subscribe to `message.groups` and `app_uninstalled`. Real workspace behavior
+has not been verified until that deployed configuration is installed and tested.
+
+Project managers and roles remain enforced in the Kiln Studio database.
+Slack's standard channel APIs do not provide this app with a per-project
+moderator/role system matching the database roles; channel membership is
+reconciled to active, linked project members, but all role-based controls must
+continue to be enforced by the website and database.
 
 ## Two-way message flow
 
@@ -65,8 +71,9 @@ Slack event webhook → signature verification → dedupe → database → app U
 ```
 
 Treat sync as an asynchronous, retryable pipeline. Do not make a client-facing
-inquiry submission depend on Slack availability. Preserve authorship, timestamps,
-thread relationships, edit/delete semantics, and failure status deliberately.
+inquiry submission depend on Slack availability. Current synchronization covers
+new message delivery and ingestion; thread relationships and message edit/delete
+semantics are not yet synchronized.
 
 ## Identity, channels, and permissions
 
@@ -76,8 +83,8 @@ thread relationships, edit/delete semantics, and failure status deliberately.
 - Keep app roles and project permissions authoritative in Kiln Studio.
 - A Slack channel does not itself grant app access. Before displaying messages
   in the website, check current project membership.
-- On membership removal, revoke app access immediately and define the desired
-  Slack channel removal/archive behavior.
+- On membership removal or deactivation, enqueue reconciliation to remove the
+  person from the mapped Slack project channel.
 - General and announcement channels should be managed explicitly and have
   permissions consistent with the in-app rules.
 - Audit project manager changes, membership changes, token installation, and
@@ -100,5 +107,39 @@ thread relationships, edit/delete semantics, and failure status deliberately.
 - Obtain workspace owner/admin approval and satisfy Slack's review requirements
   before broad distribution.
 
-Slack API, OAuth/SCIM provisioning, webhook ingestion, and bidirectional sync
-are future work; none is currently implemented.
+Slack app installation, published event URL verification, hosted migrations,
+real workspace testing, and production scheduler configuration remain
+deployment steps. Do not test by posting exploratory messages or creating
+channels in an unintended workspace.
+
+## Deployment checklist
+
+1. Apply the reviewed migrations to the intended Supabase project, including
+   `20261108080000`, `20261108090000`, and `20261109000000`.
+2. Set the Slack OAuth client ID/secret, callback URL, signing secret, OAuth
+   state secret, token-encryption key, Supabase service-role key, Upstash
+   credentials, and Vercel `CRON_SECRET` as server-side environment variables.
+   Never commit these values or expose them to browser code.
+3. Register the exact public callback URL
+   (`https://<deployed-host>/api/slack/callback`) and configure the Slack Events
+   API request URL as `https://<deployed-host>/api/slack/events`.
+4. Subscribe the bot to `message.groups` and `app_uninstalled`. The bot scopes
+   used by the worker are `chat:write`, `groups:history`, `groups:read`, and
+   `groups:write`; user scopes are `openid`, `profile`, and `email`.
+5. Confirm the deployment scheduler can invoke `/api/slack/sync` every minute.
+   Vercel Cron uses `CRON_SECRET` as a bearer token. Monitor failed sync jobs
+   and outbox rows in Supabase.
+6. A studio admin installs the workspace from `/admin/team`. Each designer
+   signs in to Kiln Studio and links their Slack account from `/designer/team`.
+   Project assignment, role, PM selection, and completion remain controlled
+   from the app.
+7. Test only with a synthetic project in the intended test workspace: channel
+   creation, linked-member add/removal, both message directions, duplicate
+   event delivery, PM reassignment, project completion/archive, and app
+   uninstall/reinstall.
+
+For app-originated chat, the website writes to Supabase first and the Slack
+outbox delivers the message. Slack-originated messages are signature-verified,
+workspace-checked, mapped to an active project member, deduplicated, then stored
+in Supabase and broadcast by Realtime. Upstash Redis supports shared
+rate-limiting; it is not used as message storage.

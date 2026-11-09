@@ -9,6 +9,9 @@ import {
 import { computeProjectPriority } from "@/lib/project-priority";
 import { createPublicInquiry } from "@/lib/supabase/public-inquiry";
 import { checkInquiryRateLimit } from "@/lib/rate-limit/inquiry";
+import { queueInquiryReferenceProcessing } from "@/lib/inquiries/reference-queue";
+import { INQUIRY_REFERENCE_BUCKET } from "@/lib/inquiries/reference-file-constants";
+import { createSupabaseServiceClient } from "@/lib/supabase/service";
 
 export const runtime = "nodejs";
 
@@ -63,6 +66,56 @@ export async function POST(request: Request) {
     );
   }
 
+  const referenceIds = parsed.data.reference_upload_ids;
+  if (referenceIds.length > 0) {
+    try {
+      const supabase = createSupabaseServiceClient();
+      const { data: files, error: filesError } = await supabase
+        .from("inquiry_reference_files")
+        .select("id, object_path, content_type, byte_size, status, inquiry_id")
+        .in("id", referenceIds)
+        .is("inquiry_id", null)
+        .eq("status", "awaiting_upload");
+
+      if (filesError) {
+        throw filesError;
+      }
+      if (!files || files.length !== referenceIds.length) {
+        return NextResponse.json(
+          { error: "One or more reference images are no longer available. Please upload them again." },
+          { status: 400, headers: { "Cache-Control": "no-store" } },
+        );
+      }
+
+      for (const file of files) {
+        const { data: objects, error: listError } = await supabase.storage
+          .from(INQUIRY_REFERENCE_BUCKET)
+          .list("pending", { search: file.id, limit: 10 });
+        if (listError) {
+          throw listError;
+        }
+
+        const uploadedObject = objects?.find((object) => object.name === file.id);
+        if (
+          !uploadedObject ||
+          Number(uploadedObject.metadata?.size) !== file.byte_size ||
+          uploadedObject.metadata?.mimetype !== file.content_type
+        ) {
+          return NextResponse.json(
+            { error: "One or more reference images have not finished uploading." },
+            { status: 400, headers: { "Cache-Control": "no-store" } },
+          );
+        }
+      }
+    } catch (error) {
+      console.error("Inquiry reference uploads could not be verified.", error);
+      return NextResponse.json(
+        { error: "Reference images are temporarily unavailable. Please try again." },
+        { status: 503, headers: { "Cache-Control": "no-store" } },
+      );
+    }
+  }
+
   let clientProfileId: string | null = null;
   try {
     const { createSupabaseSessionClient } = await import("@/lib/supabase/session");
@@ -99,7 +152,7 @@ export async function POST(request: Request) {
       ...toInquiryInsert(parsed.data),
       ...(clientProfileId ? { client_id: clientProfileId } : {}),
       priority_score: priority.priority_score,
-    }, toInquiryBriefInsert(parsed.data));
+    }, toInquiryBriefInsert(parsed.data), parsed.data.reference_upload_ids);
   } catch {
     console.error("Inquiry and brief could not be saved.");
     return NextResponse.json(
@@ -108,8 +161,13 @@ export async function POST(request: Request) {
     );
   }
 
+  const queueResult = await queueInquiryReferenceProcessing(referenceIds);
+
   return NextResponse.json(
-    { message: "Your inquiry has been received." },
+    {
+      message: "Your inquiry has been received.",
+      referenceFilesPending: queueResult.pending > 0,
+    },
     { status: 201, headers: { "Cache-Control": "no-store" } },
   );
 }

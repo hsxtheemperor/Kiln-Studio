@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 export function ConfirmationGate() {
   const router = useRouter();
   const [isConfirmed, setIsConfirmed] = useState(false);
+  const [referenceFilesPending, setReferenceFilesPending] = useState(false);
 
   useEffect(() => {
     if (sessionStorage.getItem("kiln-inquiry-saved") !== "true") {
@@ -15,6 +16,10 @@ export function ConfirmationGate() {
     }
 
     sessionStorage.removeItem("kiln-inquiry-saved");
+    setReferenceFilesPending(
+      sessionStorage.getItem("kiln-inquiry-reference-files-pending") === "true",
+    );
+    sessionStorage.removeItem("kiln-inquiry-reference-files-pending");
     setIsConfirmed(true);
   }, [router]);
 
@@ -31,6 +36,12 @@ export function ConfirmationGate() {
         Your inquiry was saved. This is a fictional studio demo, so nobody is
         monitoring submissions as real client requests.
       </p>
+      {referenceFilesPending && (
+        <p className="form-hint" role="status">
+          Your reference images are received and still being checked. They will
+          appear in the inquiry once processing finishes.
+        </p>
+      )}
       <Link className="button-secondary" href="/">Back to the studio</Link>
     </section>
   );

@@ -2,6 +2,14 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useState, type FormEvent } from "react";
+import { z } from "zod";
+import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
+import {
+  INQUIRY_REFERENCE_BUCKET,
+  INQUIRY_REFERENCE_MIME_TYPES,
+  MAX_INQUIRY_REFERENCE_BYTES,
+  MAX_INQUIRY_REFERENCE_FILES,
+} from "@/lib/inquiries/reference-file-constants";
 
 type FieldErrors = Record<string, string[] | undefined>;
 
@@ -29,6 +37,16 @@ const initialValues = {
   design_complexity: "",
 };
 
+const ReferenceUploadResponseSchema = z.object({
+  uploads: z.array(
+    z.object({
+      id: z.string().uuid(),
+      path: z.string().min(1),
+      token: z.string().min(1),
+    }),
+  ),
+});
+
 function messageFromResponse(payload: unknown): string {
   if (
     typeof payload === "object" &&
@@ -48,6 +66,8 @@ export function InquiryForm({ prefill }: { prefill?: PrefillValues }) {
   const [formError, setFormError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [step, setStep] = useState(1);
+  const [referenceFiles, setReferenceFiles] = useState<File[]>([]);
+  const [uploadedReferenceIds, setUploadedReferenceIds] = useState<string[]>([]);
 
   useEffect(() => {
     if (!prefill) {
@@ -74,10 +94,58 @@ export function InquiryForm({ prefill }: { prefill?: PrefillValues }) {
     setIsSubmitting(true);
 
     try {
+      let referenceIds = uploadedReferenceIds;
+      if (referenceFiles.length > 0 && referenceIds.length !== referenceFiles.length) {
+        const uploadResponse = await fetch("/api/inquiries/reference-uploads", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            files: referenceFiles.map((file) => ({
+              name: file.name,
+              type: file.type,
+              size: file.size,
+            })),
+          }),
+        });
+        const uploadPayload: unknown = await uploadResponse.json();
+        if (!uploadResponse.ok) {
+          throw new Error(messageFromResponse(uploadPayload));
+        }
+
+        const parsedUploadPayload = ReferenceUploadResponseSchema.safeParse(uploadPayload);
+        if (!parsedUploadPayload.success) {
+          throw new Error("We could not prepare your reference images. Please try again.");
+        }
+
+        const uploads = parsedUploadPayload.data.uploads;
+        if (uploads.length !== referenceFiles.length) {
+          throw new Error("We could not prepare your reference images. Please try again.");
+        }
+
+        const supabase = createSupabaseBrowserClient();
+        for (const [index, file] of referenceFiles.entries()) {
+          const upload = uploads[index];
+          const { error } = await supabase.storage
+            .from(INQUIRY_REFERENCE_BUCKET)
+            .uploadToSignedUrl(upload.path, upload.token, file, {
+              contentType: file.type,
+              upsert: false,
+            });
+          if (error) {
+            throw new Error(`Could not upload ${file.name}. Please try again.`);
+          }
+        }
+        referenceIds = uploads.map((upload) => upload.id);
+        setUploadedReferenceIds(referenceIds);
+      }
+
       const response = await fetch("/api/inquiries", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(values),
+        body: JSON.stringify({
+          ...values,
+          reference_upload_ids: referenceIds,
+        }),
       });
       const payload: unknown = await response.json();
 
@@ -96,9 +164,21 @@ export function InquiryForm({ prefill }: { prefill?: PrefillValues }) {
       }
 
       sessionStorage.setItem("kiln-inquiry-saved", "true");
+      if (
+        typeof payload === "object" &&
+        payload !== null &&
+        "referenceFilesPending" in payload &&
+        payload.referenceFilesPending === true
+      ) {
+        sessionStorage.setItem("kiln-inquiry-reference-files-pending", "true");
+      }
       router.push("/inquiry/confirmation");
-    } catch {
-      setFormError("We could not reach the server. Please try again.");
+    } catch (error) {
+      setFormError(
+        error instanceof Error
+          ? error.message
+          : "We could not reach the server or upload your reference images. Please try again.",
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -278,6 +358,53 @@ export function InquiryForm({ prefill }: { prefill?: PrefillValues }) {
           <div className="field">
             <label htmlFor="references">Reference links or examples <span className="form-hint">(optional)</span></label>
             <textarea id="references" name="references" maxLength={1200} value={values.references ?? ""} onChange={(event) => updateField("references", event.target.value)} />
+          </div>
+
+          <div className="field">
+            <label htmlFor="reference-images">
+              Upload visual references <span className="form-hint">(optional)</span>
+            </label>
+            <input
+              id="reference-images"
+              name="reference-images"
+              type="file"
+              accept={INQUIRY_REFERENCE_MIME_TYPES.join(",")}
+              multiple
+              onChange={(event) => {
+                const files = Array.from(event.target.files ?? []);
+                setUploadedReferenceIds([]);
+                if (files.length > MAX_INQUIRY_REFERENCE_FILES) {
+                  setFormError(`Choose no more than ${MAX_INQUIRY_REFERENCE_FILES} images.`);
+                  setReferenceFiles([]);
+                  event.target.value = "";
+                  return;
+                }
+                const invalidFile = files.find(
+                  (file) =>
+                    !INQUIRY_REFERENCE_MIME_TYPES.some((type) => type === file.type) ||
+                    file.size < 1 ||
+                    file.size > MAX_INQUIRY_REFERENCE_BYTES,
+                );
+                if (invalidFile) {
+                  setFormError("Use JPEG, PNG, or WebP images, each no larger than 8 MB.");
+                  setReferenceFiles([]);
+                  event.target.value = "";
+                  return;
+                }
+                setFormError("");
+                setReferenceFiles(files);
+              }}
+            />
+            <p className="form-hint">
+              Share up to {MAX_INQUIRY_REFERENCE_FILES} JPEG, PNG, or WebP images,
+              up to {MAX_INQUIRY_REFERENCE_BYTES / (1024 * 1024)} MB each. Please
+              avoid sensitive or confidential material.
+            </p>
+            {referenceFiles.length > 0 && (
+              <ul className="form-hint">
+                {referenceFiles.map((file) => <li key={`${file.name}-${file.lastModified}`}>{file.name}</li>)}
+              </ul>
+            )}
           </div>
 
           <div className="field">

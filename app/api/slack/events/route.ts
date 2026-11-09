@@ -7,6 +7,7 @@ const SlackEventPayloadSchema = z.object({
   type: z.string(),
   challenge: z.string().optional(),
   event_id: z.string().min(1).max(255).optional(),
+  team_id: z.string().optional(),
   event: z.object({
     type: z.string(),
     subtype: z.string().optional(),
@@ -85,6 +86,32 @@ export async function POST(request: Request) {
 
   const event = parsed.data.event;
   const eventId = parsed.data.event_id;
+  const teamId = parsed.data.team_id;
+  if (event?.type === "app_uninstalled" && teamId) {
+    try {
+      const service = createSlackServiceClient();
+      const { data, error } = await service
+        .from("slack_installations")
+        .update({
+          is_active: false,
+          encrypted_bot_token: null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", true)
+        .eq("workspace_id", teamId)
+        .select("id")
+        .maybeSingle();
+      if (error) {
+        console.error("Slack uninstall event could not revoke the stored installation.", error.message);
+        return NextResponse.json({ error: "Slack installation could not be revoked." }, { status: 503 });
+      }
+      return NextResponse.json({ ok: true, outcome: data ? "revoked" : "ignored" });
+    } catch (error) {
+      console.error("Slack uninstall event processing failed.", error);
+      return NextResponse.json({ error: "Slack uninstall event processing failed." }, { status: 503 });
+    }
+  }
+
   if (
     !event ||
     !eventId ||
@@ -101,6 +128,19 @@ export async function POST(request: Request) {
 
   try {
     const service = createSlackServiceClient();
+    const { data: installation, error: installationError } = await service
+      .from("slack_installations")
+      .select("workspace_id, is_active")
+      .eq("id", true)
+      .maybeSingle();
+    if (installationError) {
+      console.error("Slack workspace could not be verified.", installationError.message);
+      return NextResponse.json({ error: "Slack workspace could not be verified." }, { status: 503 });
+    }
+    if (!installation?.is_active || !teamId || installation.workspace_id !== teamId) {
+      return NextResponse.json({ ok: true, outcome: "ignored" });
+    }
+
     const { data: outcome, error } = await service.rpc("persist_slack_inbound_message", {
       p_event_id: eventId,
       p_provider_channel_id: event.channel,

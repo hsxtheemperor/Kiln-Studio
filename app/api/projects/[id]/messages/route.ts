@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireDesigner } from "@/lib/auth/require-designer";
 import { readJsonBody } from "@/lib/http/read-json";
+import { checkProjectMessageRateLimit } from "@/lib/rate-limit/project-messages";
 
 const MessageSchema = z.object({
   channel_id: z.string().uuid(),
@@ -122,6 +123,30 @@ export async function POST(request: Request, { params }: RouteContext) {
     return NextResponse.json(
       { error: "Your project role could not be verified." },
       { status: 500, headers: { "Cache-Control": "no-store" } },
+    );
+  }
+
+  let rateLimit: Awaited<ReturnType<typeof checkProjectMessageRateLimit>>;
+  try {
+    rateLimit = await checkProjectMessageRateLimit(authorization.user.id);
+  } catch (error) {
+    console.error("Project message rate limiting is unavailable.", error);
+    return NextResponse.json(
+      { error: "Messaging is temporarily unavailable. Please try again." },
+      { status: 503, headers: { "Cache-Control": "no-store" } },
+    );
+  }
+  if (!rateLimit.success) {
+    const retryAfter = Math.max(1, Math.ceil((rateLimit.reset - Date.now()) / 1000));
+    return NextResponse.json(
+      { error: "You are sending messages too quickly. Please try again shortly." },
+      {
+        status: 429,
+        headers: {
+          "Cache-Control": "no-store",
+          "Retry-After": String(retryAfter),
+        },
+      },
     );
   }
 
