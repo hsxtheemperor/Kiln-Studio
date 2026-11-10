@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { INQUIRY_REFERENCE_BUCKET } from "@/lib/inquiries/reference-file-constants";
 import { createSupabaseServiceClient } from "@/lib/supabase/service";
+import { deleteInquirySimilarityVectors } from "@/lib/inquiries/similarity";
 
 export const dynamic = "force-dynamic";
 
@@ -40,7 +41,7 @@ export async function GET(request: Request) {
 
     const { data: staleInquiries, error: inquiryLookupError } = await service
       .from("inquiries")
-      .select("id")
+      .select("id, similarity_opt_in, similarity_opted_in_at")
       .lt("created_at", cutoff);
 
     if (inquiryLookupError) {
@@ -48,6 +49,29 @@ export async function GET(request: Request) {
     }
 
     const staleInquiryIds = (staleInquiries ?? []).map((inquiry) => inquiry.id);
+    const activeSimilarityIds = (staleInquiries ?? [])
+      .filter((inquiry) => inquiry.similarity_opt_in)
+      .map((inquiry) => inquiry.id);
+    if (activeSimilarityIds.length > 0) {
+      const { error: consentUpdateError } = await service
+        .from("inquiries")
+        .update({
+          similarity_opt_in: false,
+          similarity_status: "not_requested",
+          similarity_matches: [],
+        })
+        .in("id", activeSimilarityIds);
+      if (consentUpdateError) {
+        throw consentUpdateError;
+      }
+    }
+
+    await deleteInquirySimilarityVectors(
+      (staleInquiries ?? [])
+        .filter((inquiry) => inquiry.similarity_opted_in_at !== null)
+        .map((inquiry) => inquiry.id),
+    );
+
     const { data: unattachedFiles, error: unattachedFilesError } = await service
       .from("inquiry_reference_files")
       .select("id, object_path")

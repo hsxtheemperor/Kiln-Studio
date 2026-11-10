@@ -12,6 +12,7 @@ import { checkInquiryRateLimit } from "@/lib/rate-limit/inquiry";
 import { queueInquiryReferenceProcessing } from "@/lib/inquiries/reference-queue";
 import { INQUIRY_REFERENCE_BUCKET } from "@/lib/inquiries/reference-file-constants";
 import { createSupabaseServiceClient } from "@/lib/supabase/service";
+import { queueInquirySimilarityProcessing } from "@/lib/inquiries/similarity-queue";
 
 export const runtime = "nodejs";
 
@@ -72,7 +73,7 @@ export async function POST(request: Request) {
       const supabase = createSupabaseServiceClient();
       const { data: files, error: filesError } = await supabase
         .from("inquiry_reference_files")
-        .select("id, object_path, content_type, byte_size, status, inquiry_id")
+        .select("id, content_type, byte_size")
         .in("id", referenceIds)
         .is("inquiry_id", null)
         .eq("status", "awaiting_upload");
@@ -142,17 +143,20 @@ export async function POST(request: Request) {
     clientProfileId = null;
   }
 
+  let inquiryId: string;
   try {
     const priority = computeProjectPriority({
       budget_range: parsed.data.budget_range ?? undefined,
       design_complexity: parsed.data.design_complexity ?? undefined,
       timeline: parsed.data.timeline ?? undefined,
     });
-    await createPublicInquiry({
+    const savedInquiry = await createPublicInquiry({
       ...toInquiryInsert(parsed.data),
       ...(clientProfileId ? { client_id: clientProfileId } : {}),
       priority_score: priority.priority_score,
+      similarity_opt_in: parsed.data.similarity_opt_in,
     }, toInquiryBriefInsert(parsed.data), parsed.data.reference_upload_ids);
+    inquiryId = savedInquiry.id;
   } catch {
     console.error("Inquiry and brief could not be saved.");
     return NextResponse.json(
@@ -162,11 +166,19 @@ export async function POST(request: Request) {
   }
 
   const queueResult = await queueInquiryReferenceProcessing(referenceIds);
+  if (parsed.data.similarity_opt_in) {
+    try {
+      await queueInquirySimilarityProcessing(inquiryId);
+    } catch (error) {
+      console.error("Opted-in inquiry similarity could not be queued.", error);
+    }
+  }
 
   return NextResponse.json(
     {
       message: "Your inquiry has been received.",
       referenceFilesPending: queueResult.pending > 0,
+      similarityPending: parsed.data.similarity_opt_in,
     },
     { status: 201, headers: { "Cache-Control": "no-store" } },
   );

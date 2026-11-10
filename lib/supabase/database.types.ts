@@ -12,6 +12,16 @@ export type InquiryBudgetRange =
   | "25k_50k"
   | "50k_plus"
   | "not_sure";
+export type InquirySimilarityStatus =
+  | "not_requested"
+  | "pending"
+  | "processing"
+  | "ready"
+  | "failed";
+export type InquirySimilarityMatch = {
+  inquiry_id: string;
+  score: number;
+};
 
 export type InquiryRow = {
   id: string;
@@ -24,6 +34,13 @@ export type InquiryRow = {
   budget_range: InquiryBudgetRange | null;
   timeline: string | null;
   priority_score: number;
+  similarity_opt_in: boolean;
+  similarity_opted_in_at: string | null;
+  similarity_status: InquirySimilarityStatus;
+  similarity_matches: InquirySimilarityMatch[];
+  reviewed_complexity: number | null;
+  actual_hours: number | null;
+  review_notes: string | null;
   status: InquiryStatus;
   created_at: string;
   updated_at: string;
@@ -39,6 +56,7 @@ export type InquiryInsert = {
   budget_range: InquiryBudgetRange | null;
   timeline: string | null;
   priority_score?: number;
+  similarity_opt_in?: boolean;
 };
 
 export type ClientProfileRow = {
@@ -392,6 +410,13 @@ export type Database = {
           id?: string;
           status?: InquiryStatus;
           priority_score?: number;
+          similarity_opt_in?: boolean;
+          similarity_opted_in_at?: string | null;
+          similarity_status?: InquirySimilarityStatus;
+          similarity_matches?: InquirySimilarityMatch[];
+          reviewed_complexity?: number | null;
+          actual_hours?: number | null;
+          review_notes?: string | null;
           created_at?: string;
           updated_at?: string;
         };

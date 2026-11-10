@@ -7,6 +7,7 @@ import {
   INQUIRY_REFERENCE_MIME_TYPES,
   MAX_INQUIRY_REFERENCE_BYTES,
   MAX_INQUIRY_REFERENCE_FILES,
+  MAX_INQUIRY_REFERENCE_TOTAL_BYTES,
 } from "./reference-file-constants";
 
 export {
@@ -14,10 +15,12 @@ export {
   INQUIRY_REFERENCE_MIME_TYPES,
   MAX_INQUIRY_REFERENCE_BYTES,
   MAX_INQUIRY_REFERENCE_FILES,
+  MAX_INQUIRY_REFERENCE_TOTAL_BYTES,
 };
 
 export const ReferenceFileUploadSchema = z
   .object({
+    website: z.string().max(200).optional().default(""),
     files: z
       .array(
         z
@@ -29,7 +32,12 @@ export const ReferenceFileUploadSchema = z
           .strict(),
       )
       .min(1)
-      .max(MAX_INQUIRY_REFERENCE_FILES),
+      .max(MAX_INQUIRY_REFERENCE_FILES)
+      .refine(
+        (files) =>
+          files.reduce((total, file) => total + file.size, 0) <=
+          MAX_INQUIRY_REFERENCE_TOTAL_BYTES,
+      ),
   })
   .strict();
 
@@ -39,7 +47,7 @@ export function sanitizeReferenceFileName(name: string) {
   return cleaned.slice(0, 180) || "reference-image";
 }
 
-function isValidImageSignature(contentType: string, bytes: Uint8Array) {
+export function hasSupportedImageSignature(contentType: string, bytes: Uint8Array) {
   if (contentType === "image/jpeg") {
     return bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
   }
@@ -83,7 +91,16 @@ export async function processInquiryReferenceFile(referenceId: string) {
   if (!file) {
     throw new Error("Reference image does not exist.");
   }
-  if (file.status === "ready" || file.status === "rejected") {
+  if (file.status === "ready") {
+    return;
+  }
+  if (file.status === "rejected") {
+    const { error: removeError } = await supabase.storage
+      .from(INQUIRY_REFERENCE_BUCKET)
+      .remove([file.object_path]);
+    if (removeError) {
+      throw new Error("Rejected reference image could not be removed.");
+    }
     return;
   }
   if (file.status !== "queued") {
@@ -101,15 +118,8 @@ export async function processInquiryReferenceFile(referenceId: string) {
   const bytes = new Uint8Array(await image.arrayBuffer());
   if (
     bytes.byteLength !== file.byte_size ||
-    !isValidImageSignature(file.content_type, bytes)
+    !hasSupportedImageSignature(file.content_type, bytes)
   ) {
-    const { error: removeError } = await supabase.storage
-      .from(INQUIRY_REFERENCE_BUCKET)
-      .remove([file.object_path]);
-    if (removeError) {
-      throw new Error("Invalid reference image could not be removed.");
-    }
-
     const { error: rejectError } = await supabase
       .from("inquiry_reference_files")
       .update({
@@ -121,6 +131,12 @@ export async function processInquiryReferenceFile(referenceId: string) {
       .eq("status", "queued");
     if (rejectError) {
       throw new Error("Invalid reference image status could not be recorded.");
+    }
+    const { error: removeError } = await supabase.storage
+      .from(INQUIRY_REFERENCE_BUCKET)
+      .remove([file.object_path]);
+    if (removeError) {
+      throw new Error("Invalid reference image could not be removed.");
     }
     return;
   }

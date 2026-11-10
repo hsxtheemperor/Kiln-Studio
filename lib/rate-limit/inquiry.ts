@@ -37,7 +37,7 @@ export async function checkInquiryUploadRateLimit(identifier: string) {
 
     uploadLimiter = new Ratelimit({
       redis: Redis.fromEnv(),
-      limiter: Ratelimit.slidingWindow(10, "10 m"),
+      limiter: Ratelimit.slidingWindow(5, "10 m"),
       prefix: "kiln-studio:inquiry-reference-uploads",
       analytics: false,
     });

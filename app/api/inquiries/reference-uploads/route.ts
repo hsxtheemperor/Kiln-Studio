@@ -22,8 +22,14 @@ export async function POST(request: Request) {
   if (!parsed.success) {
     return NextResponse.json(
       {
-        error: `Choose up to ${MAX_INQUIRY_REFERENCE_FILES} JPEG, PNG, or WebP images, each no larger than ${MAX_INQUIRY_REFERENCE_BYTES / (1024 * 1024)} MB.`,
+        error: `Choose up to ${MAX_INQUIRY_REFERENCE_FILES} JPEG, PNG, or WebP images, each no larger than ${MAX_INQUIRY_REFERENCE_BYTES / (1024 * 1024)} MB and no more than 24 MB total.`,
       },
+      { status: 400, headers: { "Cache-Control": "no-store" } },
+    );
+  }
+  if (parsed.data.website.trim().length > 0) {
+    return NextResponse.json(
+      { error: "This upload could not be accepted." },
       { status: 400, headers: { "Cache-Control": "no-store" } },
     );
   }

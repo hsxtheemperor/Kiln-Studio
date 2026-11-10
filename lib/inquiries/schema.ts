@@ -69,6 +69,7 @@ export const PublicInquirySchema = z
     references: optionalText(1200),
     time_budget: optionalText(120),
     design_complexity: optionalNumber(10),
+    similarity_opt_in: z.boolean().optional().default(false),
     reference_upload_ids: z
       .array(z.string().uuid())
       .max(4)

@@ -6,6 +6,629 @@ the behavior wired to it, and the known gaps between schema and application UI.
 Review local and private operational notes before applying anything to a hosted
 Kiln-Studio project.
 
+# Schema Visualiser
+
+## Table `inquiries`
+
+### Columns
+
+| Name | Type | Constraints |
+|------|------|-------------|
+| `id` | `uuid` | Primary |
+| `name` | `text` |  |
+| `email` | `text` |  |
+| `company` | `text` |  Nullable |
+| `service` | `text` |  Nullable |
+| `project_brief` | `text` |  |
+| `budget_range` | `text` |  Nullable |
+| `timeline` | `text` |  Nullable |
+| `status` | `text` |  |
+| `created_at` | `timestamptz` |  |
+| `updated_at` | `timestamptz` |  |
+| `client_id` | `uuid` |  Nullable |
+| `priority_score` | `int2` |  |
+| `similarity_opt_in` | `bool` |  |
+| `similarity_opted_in_at` | `timestamptz` |  Nullable |
+| `similarity_status` | `text` |  |
+| `similarity_matches` | `jsonb` |  |
+| `reviewed_complexity` | `int2` |  Nullable |
+| `actual_hours` | `numeric` |  Nullable |
+| `review_notes` | `text` |  Nullable |
+
+## Table `client_profiles`
+
+### Columns
+
+| Name | Type | Constraints |
+|------|------|-------------|
+| `id` | `uuid` | Primary |
+| `user_id` | `uuid` |  Unique |
+| `full_name` | `text` |  |
+| `email` | `text` |  Unique |
+| `created_at` | `timestamptz` |  |
+| `updated_at` | `timestamptz` |  |
+
+## Table `client_companies`
+
+### Columns
+
+| Name | Type | Constraints |
+|------|------|-------------|
+| `id` | `uuid` | Primary |
+| `client_id` | `uuid` |  |
+| `company_name` | `text` |  |
+| `is_primary` | `bool` |  |
+| `created_at` | `timestamptz` |  |
+| `updated_at` | `timestamptz` |  |
+
+## Table `project_messages`
+
+### Columns
+
+| Name | Type | Constraints |
+|------|------|-------------|
+| `id` | `uuid` | Primary |
+| `inquiry_id` | `uuid` |  |
+| `sender_type` | `text` |  |
+| `sender_id` | `uuid` |  Nullable |
+| `sender_name` | `text` |  |
+| `body` | `text` |  |
+| `created_at` | `timestamptz` |  |
+| `updated_at` | `timestamptz` |  |
+
+## Table `project_request_logs`
+
+### Columns
+
+| Name | Type | Constraints |
+|------|------|-------------|
+| `id` | `uuid` | Primary |
+| `inquiry_id` | `uuid` |  |
+| `created_at` | `timestamptz` |  |
+| `completed_at` | `timestamptz` |  Nullable |
+| `payout_amount` | `numeric` |  |
+| `payout_currency` | `text` |  |
+| `status` | `text` |  |
+| `notes` | `text` |  Nullable |
+
+## Table `company_expenses`
+
+### Columns
+
+| Name | Type | Constraints |
+|------|------|-------------|
+| `id` | `uuid` | Primary |
+| `inquiry_id` | `uuid` |  Nullable |
+| `gross_revenue` | `numeric` |  |
+| `total_paid_out` | `numeric` |  |
+| `contributor_name` | `text` |  |
+| `contributor_amount` | `numeric` |  |
+| `contributor_role` | `text` |  Nullable |
+| `created_at` | `timestamptz` |  |
+| `updated_at` | `timestamptz` |  |
+
+## Table `team_members`
+
+### Columns
+
+| Name | Type | Constraints |
+|------|------|-------------|
+| `id` | `uuid` | Primary |
+| `user_id` | `uuid` |  Unique |
+| `full_name` | `text` |  |
+| `email` | `text` |  Unique |
+| `title` | `text` |  Nullable |
+| `specialty` | `text` |  Nullable |
+| `availability_status` | `text` |  |
+| `is_active` | `bool` |  |
+| `created_at` | `timestamptz` |  |
+| `updated_at` | `timestamptz` |  |
+
+## Table `project_assignments`
+
+### Columns
+
+| Name | Type | Constraints |
+|------|------|-------------|
+| `id` | `uuid` | Primary |
+| `inquiry_id` | `uuid` |  |
+| `team_member_id` | `uuid` |  |
+| `role_name` | `text` |  |
+| `is_project_manager` | `bool` |  |
+| `assigned_at` | `timestamptz` |  |
+
+## Table `project_channels`
+
+### Columns
+
+| Name | Type | Constraints |
+|------|------|-------------|
+| `id` | `uuid` | Primary |
+| `inquiry_id` | `uuid` |  Nullable |
+| `channel_name` | `text` |  |
+| `channel_type` | `text` |  |
+| `moderator_member_id` | `uuid` |  Nullable |
+| `created_at` | `timestamptz` |  |
+| `updated_at` | `timestamptz` |  |
+| `project_id` | `uuid` |  Nullable |
+| `is_archived` | `bool` |  |
+| `description` | `text` |  |
+
+## Table `project_channel_members`
+
+### Columns
+
+| Name | Type | Constraints |
+|------|------|-------------|
+| `id` | `uuid` | Primary |
+| `channel_id` | `uuid` |  |
+| `team_member_id` | `uuid` |  |
+| `joined_at` | `timestamptz` |  |
+| `role` | `text` |  |
+
+## Table `project_channel_messages`
+
+### Columns
+
+| Name | Type | Constraints |
+|------|------|-------------|
+| `id` | `uuid` | Primary |
+| `channel_id` | `uuid` |  |
+| `sender_member_id` | `uuid` |  Nullable |
+| `sender_name` | `text` |  |
+| `sender_role` | `text` |  Nullable |
+| `body` | `text` |  |
+| `created_at` | `timestamptz` |  |
+| `message_source` | `text` |  |
+
+## Table `inquiry_briefs`
+
+### Columns
+
+| Name | Type | Constraints |
+|------|------|-------------|
+| `id` | `uuid` | Primary |
+| `inquiry_id` | `uuid` |  Unique |
+| `design_goal` | `text` |  |
+| `brand_message` | `text` |  |
+| `target_audience` | `text` |  Nullable |
+| `desired_outcomes` | `text` |  Nullable |
+| `references` | `text` |  Nullable |
+| `time_budget` | `text` |  Nullable |
+| `design_complexity` | `int2` |  Nullable |
+| `created_at` | `timestamptz` |  |
+| `updated_at` | `timestamptz` |  |
+
+## Table `projects`
+
+### Columns
+
+| Name | Type | Constraints |
+|------|------|-------------|
+| `id` | `uuid` | Primary |
+| `inquiry_id` | `uuid` |  Unique |
+| `project_name` | `text` |  |
+| `deadline_date` | `date` |  Nullable |
+| `project_manager_id` | `uuid` |  Nullable |
+| `accepted_at` | `timestamptz` |  |
+| `created_by` | `uuid` |  Nullable |
+| `created_at` | `timestamptz` |  |
+| `updated_at` | `timestamptz` |  |
+| `status` | `text` |  |
+| `completed_at` | `timestamptz` |  Nullable |
+
+## Table `project_members`
+
+### Columns
+
+| Name | Type | Constraints |
+|------|------|-------------|
+| `id` | `uuid` | Primary |
+| `project_id` | `uuid` |  |
+| `team_member_id` | `uuid` |  |
+| `role_name` | `text` |  |
+| `created_at` | `timestamptz` |  |
+| `updated_at` | `timestamptz` |  |
+
+## Table `system_activity_logs`
+
+### Columns
+
+| Name | Type | Constraints |
+|------|------|-------------|
+| `id` | `uuid` | Primary |
+| `channel_id` | `uuid` |  |
+| `table_name` | `text` |  |
+| `record_id` | `uuid` |  Nullable |
+| `operation` | `text` |  |
+| `changed_columns` | `_text` |  |
+| `actor_user_id` | `uuid` |  Nullable |
+| `occurred_at` | `timestamptz` |  |
+
+## Table `project_revenue`
+
+### Columns
+
+| Name | Type | Constraints |
+|------|------|-------------|
+| `id` | `uuid` | Primary |
+| `project_id` | `uuid` |  |
+| `entry_type` | `text` |  |
+| `amount` | `numeric` |  |
+| `currency` | `text` |  |
+| `received_on` | `date` |  |
+| `description` | `text` |  Nullable |
+| `created_by` | `uuid` |  Nullable |
+| `created_at` | `timestamptz` |  |
+
+## Table `project_payouts`
+
+### Columns
+
+| Name | Type | Constraints |
+|------|------|-------------|
+| `id` | `uuid` | Primary |
+| `project_id` | `uuid` |  |
+| `team_member_id` | `uuid` |  |
+| `role_name` | `text` |  |
+| `entry_type` | `text` |  |
+| `amount` | `numeric` |  |
+| `currency` | `text` |  |
+| `status` | `text` |  |
+| `paid_on` | `date` |  Nullable |
+| `notes` | `text` |  Nullable |
+| `created_by` | `uuid` |  Nullable |
+| `created_at` | `timestamptz` |  |
+
+## Table `expenses`
+
+### Columns
+
+| Name | Type | Constraints |
+|------|------|-------------|
+| `id` | `uuid` | Primary |
+| `name` | `text` |  |
+| `category` | `expense_category` |  |
+| `amount` | `numeric` |  |
+| `currency` | `text` |  |
+| `incurred_on` | `date` |  |
+| `notes` | `text` |  Nullable |
+| `voided_at` | `timestamptz` |  Nullable |
+| `void_reason` | `text` |  Nullable |
+| `created_by` | `uuid` |  Nullable |
+| `created_at` | `timestamptz` |  |
+| `updated_at` | `timestamptz` |  |
+
+## Table `recurring_expenses`
+
+### Columns
+
+| Name | Type | Constraints |
+|------|------|-------------|
+| `id` | `uuid` | Primary |
+| `name` | `text` |  |
+| `category` | `expense_category` |  |
+| `amount` | `numeric` |  |
+| `currency` | `text` |  |
+| `frequency` | `text` |  |
+| `starts_on` | `date` |  |
+| `ends_on` | `date` |  Nullable |
+| `notes` | `text` |  Nullable |
+| `voided_at` | `timestamptz` |  Nullable |
+| `void_reason` | `text` |  Nullable |
+| `created_by` | `uuid` |  Nullable |
+| `created_at` | `timestamptz` |  |
+| `updated_at` | `timestamptz` |  |
+
+## Table `quarterly_reports`
+
+### Columns
+
+| Name | Type | Constraints |
+|------|------|-------------|
+| `id` | `uuid` | Primary |
+| `period_year` | `int2` |  |
+| `period_quarter` | `int2` |  |
+| `version` | `int4` |  |
+| `supersedes_report_id` | `uuid` |  Nullable |
+| `period_start` | `date` |  |
+| `period_end` | `date` |  |
+| `currency` | `text` |  |
+| `total_revenue` | `numeric` |  |
+| `total_payouts` | `numeric` |  |
+| `total_expenses` | `numeric` |  |
+| `total_recurring_expenses` | `numeric` |  |
+| `net_result` | `numeric` |  |
+| `status` | `text` |  |
+| `generated_at` | `timestamptz` |  |
+| `published_at` | `timestamptz` |  Nullable |
+| `published_by` | `uuid` |  Nullable |
+| `created_at` | `timestamptz` |  |
+
+## Table `quarterly_report_lines`
+
+### Columns
+
+| Name | Type | Constraints |
+|------|------|-------------|
+| `id` | `uuid` | Primary |
+| `report_id` | `uuid` |  |
+| `line_type` | `text` |  |
+| `project_id` | `uuid` |  Nullable |
+| `label` | `text` |  |
+| `amount` | `numeric` |  |
+| `created_at` | `timestamptz` |  |
+
+## Table `slack_installations`
+
+### Columns
+
+| Name | Type | Constraints |
+|------|------|-------------|
+| `id` | `bool` | Primary |
+| `workspace_id` | `text` |  Unique |
+| `workspace_name` | `text` |  |
+| `bot_user_id` | `text` |  |
+| `encrypted_bot_token` | `text` |  Nullable |
+| `installed_by` | `uuid` |  |
+| `installed_at` | `timestamptz` |  |
+| `updated_at` | `timestamptz` |  |
+| `is_active` | `bool` |  |
+
+## Table `slack_user_mappings`
+
+### Columns
+
+| Name | Type | Constraints |
+|------|------|-------------|
+| `team_member_id` | `uuid` | Primary |
+| `slack_user_id` | `text` |  Unique |
+| `verified_at` | `timestamptz` |  |
+| `linked_by` | `uuid` |  |
+
+## Table `slack_project_channels`
+
+### Columns
+
+| Name | Type | Constraints |
+|------|------|-------------|
+| `project_id` | `uuid` | Primary |
+| `slack_channel_id` | `text` |  Unique |
+| `slack_channel_name` | `text` |  |
+| `synced_at` | `timestamptz` |  |
+
+## Table `slack_project_sync_jobs`
+
+### Columns
+
+| Name | Type | Constraints |
+|------|------|-------------|
+| `project_id` | `uuid` | Primary |
+| `action` | `text` |  |
+| `status` | `text` |  |
+| `attempt_count` | `int4` |  |
+| `available_at` | `timestamptz` |  |
+| `claimed_at` | `timestamptz` |  Nullable |
+| `last_error` | `text` |  Nullable |
+| `updated_at` | `timestamptz` |  |
+
+## Table `slack_message_outbox`
+
+### Columns
+
+| Name | Type | Constraints |
+|------|------|-------------|
+| `id` | `uuid` | Primary |
+| `project_id` | `uuid` |  |
+| `project_channel_message_id` | `uuid` |  Unique |
+| `status` | `text` |  |
+| `attempt_count` | `int4` |  |
+| `available_at` | `timestamptz` |  |
+| `claimed_at` | `timestamptz` |  Nullable |
+| `slack_message_ts` | `text` |  Nullable |
+| `last_error` | `text` |  Nullable |
+| `created_at` | `timestamptz` |  |
+| `updated_at` | `timestamptz` |  |
+
+## Table `slack_event_receipts`
+
+### Columns
+
+| Name | Type | Constraints |
+|------|------|-------------|
+| `event_id` | `text` | Primary |
+| `outcome` | `text` |  |
+| `provider_channel_id` | `text` |  Nullable |
+| `provider_message_ts` | `text` |  Nullable |
+| `received_at` | `timestamptz` |  |
+| `processed_at` | `timestamptz` |  Nullable |
+
+## Table `slack_provider_messages`
+
+### Columns
+
+| Name | Type | Constraints |
+|------|------|-------------|
+| `provider_channel_id` | `text` | Primary |
+| `provider_message_ts` | `text` | Primary |
+| `project_channel_message_id` | `uuid` |  Unique |
+
+## Table `inquiry_reference_files`
+
+### Columns
+
+| Name | Type | Constraints |
+|------|------|-------------|
+| `id` | `uuid` | Primary |
+| `inquiry_id` | `uuid` |  Nullable |
+| `object_path` | `text` |  Unique |
+| `file_name` | `text` |  |
+| `content_type` | `text` |  |
+| `byte_size` | `int4` |  |
+| `status` | `text` |  |
+| `failure_reason` | `text` |  Nullable |
+| `created_at` | `timestamptz` |  |
+| `processed_at` | `timestamptz` |  Nullable |
+
+## Custom Types / Enums
+
+### `expense_category`
+
+`software` | `rent` | `tools` | `equipment` | `services` | `travel` | `other`
+
+## RLS Policies
+
+### `inquiries`
+
+| Policy | Command | Roles | Action | USING | WITH CHECK |
+|--------|---------|-------|--------|-------|------------|
+| `Studio members can read inquiries` | SELECT | authenticated | PERMISSIVE | `(((auth.jwt() -> 'app_metadata'::text) ->> 'access_level'::text) = 'studio_member'::text)` | — |
+| `Studio members can update inquiry status` | UPDATE | authenticated | PERMISSIVE | `(((auth.jwt() -> 'app_metadata'::text) ->> 'access_level'::text) = 'studio_member'::text)` | `(((auth.jwt() -> 'app_metadata'::text) ->> 'access_level'::text) = 'studio_member'::text)` |
+| `Clients can read their own inquiries` | SELECT | authenticated | PERMISSIVE | `((((auth.jwt() -> 'app_metadata'::text) ->> 'access_level'::text) = 'client'::text) AND (client_id IS NOT NULL) AND (client_id IN ( SELECT cp.id    FROM client_profiles cp   WHERE (cp.user_id = auth.uid()))))` | — |
+| `Clients can insert their own inquiries` | INSERT | authenticated | PERMISSIVE | — | `((((auth.jwt() -> 'app_metadata'::text) ->> 'access_level'::text) = 'client'::text) AND (client_id IS NOT NULL) AND (client_id IN ( SELECT cp.id    FROM client_profiles cp   WHERE (cp.user_id = auth.uid()))))` |
+
+### `client_profiles`
+
+| Policy | Command | Roles | Action | USING | WITH CHECK |
+|--------|---------|-------|--------|-------|------------|
+| `Clients can view their own profile` | SELECT | authenticated | PERMISSIVE | `(user_id = auth.uid())` | — |
+| `Clients can update their own profile` | UPDATE | authenticated | PERMISSIVE | `(user_id = auth.uid())` | `(user_id = auth.uid())` |
+| `Clients can insert their own profile` | INSERT | authenticated | PERMISSIVE | — | `(user_id = auth.uid())` |
+
+### `client_companies`
+
+| Policy | Command | Roles | Action | USING | WITH CHECK |
+|--------|---------|-------|--------|-------|------------|
+| `Clients can view their own companies` | SELECT | authenticated | PERMISSIVE | `(client_id IN ( SELECT cp.id    FROM client_profiles cp   WHERE (cp.user_id = auth.uid())))` | — |
+| `Clients can insert their own companies` | INSERT | authenticated | PERMISSIVE | — | `(client_id IN ( SELECT cp.id    FROM client_profiles cp   WHERE (cp.user_id = auth.uid())))` |
+| `Clients can update their own companies` | UPDATE | authenticated | PERMISSIVE | `(client_id IN ( SELECT cp.id    FROM client_profiles cp   WHERE (cp.user_id = auth.uid())))` | `(client_id IN ( SELECT cp.id    FROM client_profiles cp   WHERE (cp.user_id = auth.uid())))` |
+
+### `inquiry_briefs`
+
+| Policy | Command | Roles | Action | USING | WITH CHECK |
+|--------|---------|-------|--------|-------|------------|
+| `project_briefs_select_for_authenticated` | SELECT | authenticated | PERMISSIVE | `((((auth.jwt() -> 'app_metadata'::text) ->> 'access_level'::text) = ANY (ARRAY['studio_member'::text, 'designer'::text])) OR ((auth.jwt() ->> 'role'::text) = ANY (ARRAY['studio_member'::text, 'designer'::text])))` | — |
+| `project_briefs_insert_for_service_role` | INSERT | service_role | PERMISSIVE | — | `true` |
+| `project_briefs_update_for_service_role` | UPDATE | service_role | PERMISSIVE | `true` | `true` |
+
+### `projects`
+
+| Policy | Command | Roles | Action | USING | WITH CHECK |
+|--------|---------|-------|--------|-------|------------|
+| `projects_select_for_studio` | SELECT | authenticated | PERMISSIVE | `((auth.uid() IS NOT NULL) AND (COALESCE(((auth.jwt() -> 'app_metadata'::text) ->> 'access_level'::text), (auth.jwt() ->> 'role'::text)) = ANY (ARRAY['studio_member'::text, 'designer'::text])))` | — |
+| `projects_update_for_admin_or_pm` | UPDATE | authenticated | PERMISSIVE | `((((auth.jwt() -> 'app_metadata'::text) ->> 'access_level'::text) = 'studio_member'::text) OR is_project_manager(id))` | `((((auth.jwt() -> 'app_metadata'::text) ->> 'access_level'::text) = 'studio_member'::text) OR is_project_manager(id))` |
+
+### `project_members`
+
+| Policy | Command | Roles | Action | USING | WITH CHECK |
+|--------|---------|-------|--------|-------|------------|
+| `project_members_select_for_studio` | SELECT | authenticated | PERMISSIVE | `((auth.uid() IS NOT NULL) AND (COALESCE(((auth.jwt() -> 'app_metadata'::text) ->> 'access_level'::text), (auth.jwt() ->> 'role'::text)) = ANY (ARRAY['studio_member'::text, 'designer'::text])))` | — |
+| `project_members_delete_for_admin_or_pm` | DELETE | authenticated | PERMISSIVE | `((role_name <> 'PROJECT_MANAGER'::text) AND ((((auth.jwt() -> 'app_metadata'::text) ->> 'access_level'::text) = 'studio_member'::text) OR is_project_manager(project_id)))` | — |
+| `project_members_insert_for_admin_or_pm` | INSERT | authenticated | PERMISSIVE | — | `((role_name <> 'PROJECT_MANAGER'::text) AND (EXISTS ( SELECT 1    FROM projects   WHERE ((projects.id = project_members.project_id) AND (projects.status = 'active'::text)))) AND ((((( SELECT auth.jwt() AS jwt) -> 'app_metadata'::text) ->> 'access_level'::text) = 'studio_member'::text) OR is_project_manager(project_id)))` |
+| `project_members_update_for_admin_or_pm` | UPDATE | authenticated | PERMISSIVE | `((role_name <> 'PROJECT_MANAGER'::text) AND (EXISTS ( SELECT 1    FROM projects   WHERE ((projects.id = project_members.project_id) AND (projects.status = 'active'::text)))) AND ((((( SELECT auth.jwt() AS jwt) -> 'app_metadata'::text) ->> 'access_level'::text) = 'studio_member'::text) OR is_project_manager(project_id)))` | `((role_name <> 'PROJECT_MANAGER'::text) AND (EXISTS ( SELECT 1    FROM projects   WHERE ((projects.id = project_members.project_id) AND (projects.status = 'active'::text)))) AND ((((( SELECT auth.jwt() AS jwt) -> 'app_metadata'::text) ->> 'access_level'::text) = 'studio_member'::text) OR is_project_manager(project_id)))` |
+
+### `project_channel_members`
+
+| Policy | Command | Roles | Action | USING | WITH CHECK |
+|--------|---------|-------|--------|-------|------------|
+| `project_channel_members_select_for_studio` | SELECT | authenticated | PERMISSIVE | `((auth.uid() IS NOT NULL) AND (COALESCE(((auth.jwt() -> 'app_metadata'::text) ->> 'access_level'::text), (auth.jwt() ->> 'role'::text)) = ANY (ARRAY['studio_member'::text, 'designer'::text])) AND ((EXISTS ( SELECT 1    FROM project_channels channels   WHERE ((channels.id = project_channel_members.channel_id) AND (channels.channel_type = ANY (ARRAY['general'::text, 'announcement'::text, 'system'::text]))))) OR is_project_channel_member(channel_id)))` | — |
+
+### `project_channel_messages`
+
+| Policy | Command | Roles | Action | USING | WITH CHECK |
+|--------|---------|-------|--------|-------|------------|
+| `project_channel_messages_select_for_studio` | SELECT | authenticated | PERMISSIVE | `((EXISTS ( SELECT 1    FROM project_channels channels   WHERE ((channels.id = project_channel_messages.channel_id) AND ((channels.channel_type = ANY (ARRAY['general'::text, 'announcement'::text, 'system'::text])) OR is_project_channel_member(channels.id))))) AND (COALESCE(((auth.jwt() -> 'app_metadata'::text) ->> 'access_level'::text), (auth.jwt() ->> 'role'::text)) = ANY (ARRAY['studio_member'::text, 'designer'::text])))` | — |
+| `project_channel_messages_insert_for_studio` | INSERT | authenticated | PERMISSIVE | — | `((EXISTS ( SELECT 1    FROM project_channels channels   WHERE ((channels.id = project_channel_messages.channel_id) AND ((channels.channel_type = 'general'::text) OR ((channels.channel_type = 'announcement'::text) AND (((auth.jwt() -> 'app_metadata'::text) ->> 'access_level'::text) = 'studio_member'::text)) OR ((channels.channel_type = 'project'::text) AND (channels.is_archived = false) AND is_project_channel_member(channels.id)))))) AND (COALESCE(((auth.jwt() -> 'app_metadata'::text) ->> 'access_level'::text), (auth.jwt() ->> 'role'::text)) = ANY (ARRAY['studio_member'::text, 'designer'::text])) AND (EXISTS ( SELECT 1    FROM team_members team   WHERE ((team.id = project_channel_messages.sender_member_id) AND (team.user_id = auth.uid()) AND (team.full_name = project_channel_messages.sender_name)))))` |
+
+### `project_channels`
+
+| Policy | Command | Roles | Action | USING | WITH CHECK |
+|--------|---------|-------|--------|-------|------------|
+| `project_channels_select_for_studio` | SELECT | authenticated | PERMISSIVE | `((auth.uid() IS NOT NULL) AND (COALESCE(((auth.jwt() -> 'app_metadata'::text) ->> 'access_level'::text), (auth.jwt() ->> 'role'::text)) = ANY (ARRAY['studio_member'::text, 'designer'::text])) AND ((channel_type = ANY (ARRAY['general'::text, 'announcement'::text, 'system'::text])) OR ((project_id IS NOT NULL) AND is_project_channel_member(id))))` | — |
+
+### `team_members`
+
+| Policy | Command | Roles | Action | USING | WITH CHECK |
+|--------|---------|-------|--------|-------|------------|
+| `team_members_select_for_studio` | SELECT | authenticated | PERMISSIVE | `(((( SELECT auth.jwt() AS jwt) -> 'app_metadata'::text) ->> 'access_level'::text) = ANY (ARRAY['designer'::text, 'studio_member'::text]))` | — |
+
+### `project_assignments`
+
+| Policy | Command | Roles | Action | USING | WITH CHECK |
+|--------|---------|-------|--------|-------|------------|
+| `project_assignments_select_for_studio` | SELECT | authenticated | PERMISSIVE | `(((( SELECT auth.jwt() AS jwt) -> 'app_metadata'::text) ->> 'access_level'::text) = ANY (ARRAY['designer'::text, 'studio_member'::text]))` | — |
+
+### `project_messages`
+
+| Policy | Command | Roles | Action | USING | WITH CHECK |
+|--------|---------|-------|--------|-------|------------|
+| `project_messages_select_for_designers` | SELECT | authenticated | PERMISSIVE | `(((( SELECT auth.jwt() AS jwt) -> 'app_metadata'::text) ->> 'access_level'::text) = ANY (ARRAY['designer'::text, 'studio_member'::text]))` | — |
+| `project_messages_insert_for_designers` | INSERT | authenticated | PERMISSIVE | — | `(((((auth.jwt() -> 'app_metadata'::text) ->> 'access_level'::text) = 'designer'::text) AND (sender_type = 'designer'::text) AND (sender_id = auth.uid())) OR ((((auth.jwt() -> 'app_metadata'::text) ->> 'access_level'::text) = 'studio_member'::text) AND (sender_type = 'team'::text) AND (sender_id = auth.uid())))` |
+
+### `project_request_logs`
+
+| Policy | Command | Roles | Action | USING | WITH CHECK |
+|--------|---------|-------|--------|-------|------------|
+| `project_request_logs_select_for_designers` | SELECT | authenticated | PERMISSIVE | `(((( SELECT auth.jwt() AS jwt) -> 'app_metadata'::text) ->> 'access_level'::text) = ANY (ARRAY['designer'::text, 'studio_member'::text]))` | — |
+| `project_request_logs_insert_for_designers` | INSERT | authenticated | PERMISSIVE | — | `(((( SELECT auth.jwt() AS jwt) -> 'app_metadata'::text) ->> 'access_level'::text) = ANY (ARRAY['designer'::text, 'studio_member'::text]))` |
+
+### `company_expenses`
+
+| Policy | Command | Roles | Action | USING | WITH CHECK |
+|--------|---------|-------|--------|-------|------------|
+| `company_expenses_select_for_designers` | SELECT | authenticated | PERMISSIVE | `(((( SELECT auth.jwt() AS jwt) -> 'app_metadata'::text) ->> 'access_level'::text) = ANY (ARRAY['designer'::text, 'studio_member'::text]))` | — |
+| `company_expenses_insert_for_designers` | INSERT | authenticated | PERMISSIVE | — | `(((( SELECT auth.jwt() AS jwt) -> 'app_metadata'::text) ->> 'access_level'::text) = ANY (ARRAY['designer'::text, 'studio_member'::text]))` |
+
+### `system_activity_logs`
+
+| Policy | Command | Roles | Action | USING | WITH CHECK |
+|--------|---------|-------|--------|-------|------------|
+| `system_activity_logs_select_for_studio` | SELECT | authenticated | PERMISSIVE | `((auth.uid() IS NOT NULL) AND (((auth.jwt() -> 'app_metadata'::text) ->> 'access_level'::text) = 'studio_member'::text))` | — |
+
+### `project_revenue`
+
+| Policy | Command | Roles | Action | USING | WITH CHECK |
+|--------|---------|-------|--------|-------|------------|
+| `project_revenue_studio_only` | SELECT | authenticated | PERMISSIVE | `(((auth.jwt() -> 'app_metadata'::text) ->> 'access_level'::text) = 'studio_member'::text)` | — |
+| `project_revenue_insert_studio_only` | INSERT | authenticated | PERMISSIVE | — | `(((auth.jwt() -> 'app_metadata'::text) ->> 'access_level'::text) = 'studio_member'::text)` |
+
+### `project_payouts`
+
+| Policy | Command | Roles | Action | USING | WITH CHECK |
+|--------|---------|-------|--------|-------|------------|
+| `project_payouts_studio_only` | SELECT | authenticated | PERMISSIVE | `(((auth.jwt() -> 'app_metadata'::text) ->> 'access_level'::text) = 'studio_member'::text)` | — |
+| `project_payouts_insert_studio_only` | INSERT | authenticated | PERMISSIVE | — | `(((auth.jwt() -> 'app_metadata'::text) ->> 'access_level'::text) = 'studio_member'::text)` |
+| `project_payouts_update_studio_only` | UPDATE | authenticated | PERMISSIVE | `(((auth.jwt() -> 'app_metadata'::text) ->> 'access_level'::text) = 'studio_member'::text)` | `(((auth.jwt() -> 'app_metadata'::text) ->> 'access_level'::text) = 'studio_member'::text)` |
+
+### `expenses`
+
+| Policy | Command | Roles | Action | USING | WITH CHECK |
+|--------|---------|-------|--------|-------|------------|
+| `expenses_studio_only` | SELECT | authenticated | PERMISSIVE | `(((auth.jwt() -> 'app_metadata'::text) ->> 'access_level'::text) = 'studio_member'::text)` | — |
+| `expenses_insert_studio_only` | INSERT | authenticated | PERMISSIVE | — | `(((auth.jwt() -> 'app_metadata'::text) ->> 'access_level'::text) = 'studio_member'::text)` |
+
+### `recurring_expenses`
+
+| Policy | Command | Roles | Action | USING | WITH CHECK |
+|--------|---------|-------|--------|-------|------------|
+| `recurring_expenses_studio_only` | SELECT | authenticated | PERMISSIVE | `(((auth.jwt() -> 'app_metadata'::text) ->> 'access_level'::text) = 'studio_member'::text)` | — |
+| `recurring_expenses_insert_studio_only` | INSERT | authenticated | PERMISSIVE | — | `(((auth.jwt() -> 'app_metadata'::text) ->> 'access_level'::text) = 'studio_member'::text)` |
+
+### `quarterly_reports`
+
+| Policy | Command | Roles | Action | USING | WITH CHECK |
+|--------|---------|-------|--------|-------|------------|
+| `quarterly_reports_studio_only` | SELECT | authenticated | PERMISSIVE | `(((auth.jwt() -> 'app_metadata'::text) ->> 'access_level'::text) = 'studio_member'::text)` | — |
+
+### `quarterly_report_lines`
+
+| Policy | Command | Roles | Action | USING | WITH CHECK |
+|--------|---------|-------|--------|-------|------------|
+| `quarterly_report_lines_studio_only` | SELECT | authenticated | PERMISSIVE | `(EXISTS ( SELECT 1    FROM quarterly_reports reports   WHERE ((reports.id = quarterly_report_lines.report_id) AND (((auth.jwt() -> 'app_metadata'::text) ->> 'access_level'::text) = 'studio_member'::text))))` | — |
+
+
+
+
 ## Contents
 
 - [Database and Supabase](#database-and-supabase)
@@ -16,14 +639,11 @@ Kiln-Studio project.
   - [Data model](#data-model)
   - [Migration sequence](#migration-sequence)
   - [Hosted Kiln-Studio rollout](#hosted-kiln-studio-rollout)
-    - [Option A: intentionally rebuild the empty project](#option-a-intentionally-rebuild-the-empty-project)
-    - [Option B: preserve the existing database](#option-b-preserve-the-existing-database)
   - [Current tables (committed)](#current-tables-committed)
   - [Inquiry, priority and project flow](#inquiry-priority-and-project-flow)
   - [Audit trail (system activity)](#audit-trail-system-activity)
   - [Inquiry priority](#inquiry-priority)
     - [Model](#model)
-    - [Priority behavior and access](#priority-behavior-and-access)
   - [Project finance and quarterly reports](#project-finance-and-quarterly-reports)
     - [Net result](#net-result)
     - [Tables](#tables)
@@ -165,11 +785,14 @@ operational tables by triggers, not by foreign keys.
 17. [`20261108090000_enable_project_message_realtime.sql`](../supabase/migrations/20261108090000_enable_project_message_realtime.sql): adds project chat messages to Realtime and reclaims stale sync/outbox jobs.
 18. [`20261109000000_reconcile_slack_project_members.sql`](../supabase/migrations/20261109000000_reconcile_slack_project_members.sql): reconciles Slack channel membership after project membership, account-link, team-active-state, and workspace-installation changes; supports installation revocation and reconnection.
 19. [`20261109010000_add_inquiry_reference_uploads.sql`](../supabase/migrations/20261109010000_add_inquiry_reference_uploads.sql): creates a private image bucket and server-only reference metadata; links uploads atomically to inquiries and queues verification.
+20. [`20261109020000_add_opt_in_inquiry_similarity.sql`](../supabase/migrations/20261109020000_add_opt_in_inquiry_similarity.sql): adds explicit consent, advisory match state, and human review fields while preserving atomic inquiry creation.
 
 Migrations 9 to 12 harden and refine migration 8; migrations 13 to 15 finalize
 inquiry priority, activity-feed access/Realtime, finance, and project-team
-membership boundaries. Migrations 16 to 18 add the optional Slack sync layer
-while keeping Postgres authoritative.
+membership boundaries. Migrations 16 to 18 add the optional Slack sync layer while keeping Postgres
+authoritative. Migration 19 adds private inquiry-reference uploads and their
+QStash verification workflow. Migration 20 adds opt-in similarity and human
+review data; vector records remain auxiliary and are not relational source data.
 
 Do not treat edits made only in the Supabase dashboard as the source of truth.
 Test a fresh database and a database upgraded through the full migration chain.
@@ -191,10 +814,11 @@ project identifiers into project docs that are intended for public review.
 
 | Table | Purpose and current model |
 | --- | --- |
-| `inquiries` | Public request data, service/budget/timeline, lifecycle status, timestamps, nullable `client_id`, and priority score `0-10`. |
+| `inquiries` | Public request data, service/budget/timeline, lifecycle status, timestamps, nullable `client_id`, priority score `0-10`, explicit similarity consent/state/matches, and human review fields. |
 | `client_profiles` | Supabase user ID, name, email, and timestamps. Does not store a password. |
 | `client_companies` | Company names associated with a client; unique per `(client_id, company_name)`. Client sign-up currently accepts zero or one company name. |
-| `inquiry_briefs` | One extended design brief per inquiry, including the scoring inputs. Priority is owned by `inquiries`; labels are derived in application code. |
+| `inquiry_briefs` | One extended design brief per inquiry, including scoring inputs and the approved text fields used for opted-in similarity. Priority is owned by `inquiries`; labels are derived in application code. |
+| `inquiry_reference_files` | Private image metadata and processing state for optional inquiry attachments. Unattached upload records are temporary; only studio-server routes may read or mutate metadata. |
 | `projects` | One project per accepted inquiry: name, nullable deadline date, PM team-member ID, `active`/`completed` status, completion time, acceptance time, and creator. |
 | `project_members` | The project's smaller assigned team; one row per team member per project with that member's role. Exactly one `PROJECT_MANAGER` role is allowed and is synchronized from the project's PM field. |
 | `project_messages` | Inquiry-linked messages; insert policies bind sender identity and type to the authenticated user. Inquiry-scoped despite the name. |
@@ -231,9 +855,15 @@ than a domain table; see [Audit trail](#audit-trail-system-activity).
 `POST /api/inquiries` validates the request with `PublicInquirySchema`, checks
 the honeypot and shared rate limit, computes priority using
 `computeProjectPriority`, then calls the restricted
-`create_public_inquiry_with_brief` RPC to insert the inquiry and extended brief
-atomically. The inquiry's status is one of `new`, `contacted`, `accepted`,
-`in_progress`, or `closed`.
+`create_public_inquiry_with_references` RPC to insert the inquiry, extended
+brief, and selected reference-image links atomically. Optional reference
+images are JPEG, PNG, or WebP (up to four, 8 MB each, 24 MB total). Browser
+uploads use short-lived signed upload URLs into a private Supabase Storage bucket. QStash
+delivers a signature-verified task that checks image bytes against their
+declared format; only verified images can receive short-lived admin preview
+URLs. If QStash is not configured, development verifies files inline. The
+inquiry's status is one of `new`, `contacted`, `accepted`, `in_progress`, or
+`closed`.
 `accepted` is never the default for a new inquiry.
 
 Inquiries do not become projects at submission. Setting an inquiry's status to
@@ -684,8 +1314,11 @@ Required environment variables:
 | `NEXT_PUBLIC_SUPABASE_URL` | Supabase project URL. |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Browser-safe key constrained by RLS. |
 | `SUPABASE_SERVICE_ROLE_KEY` | Server-only privileged operation; never `NEXT_PUBLIC_`. |
+| `NEXT_PUBLIC_SITE_URL` | Canonical app origin used for QStash callbacks and locally set to `http://localhost:3000`. |
 | `UPSTASH_REDIS_REST_URL` | Shared inquiry and project-message rate-limit store. |
 | `UPSTASH_REDIS_REST_TOKEN` | Server-only Upstash credential. |
+| `QSTASH_TOKEN` | Server-only token used to enqueue reference-image verification. |
+| `QSTASH_CURRENT_SIGNING_KEY`, `QSTASH_NEXT_SIGNING_KEY` | Server-only signing keys used to authenticate QStash deliveries. |
 | `SLACK_CLIENT_ID`, `SLACK_CLIENT_SECRET` | Slack OAuth app credentials; server-only. |
 | `SLACK_REDIRECT_URI` | Exact OAuth callback URL registered in the Slack app. |
 | `SLACK_SIGNING_SECRET` | Verifies Slack Events API requests. |
@@ -702,6 +1335,9 @@ error occurs before a credentials or app-role decision can be made.
 
 This is a fictional portfolio demo. Use synthetic inquiry, team and finance
 data; do not ask visitors for secrets, payment details, or sensitive client
-materials. Keep logs free of request contents and tokens. The repository includes an automated 14-day demo inquiry cleanup route. Keep
-the cron secret private and verify scheduled execution in the deployment before
-treating retention as operational.
+materials. Uploaded references are private, limited to image formats, and
+removed along with their inquiry by the automated 14-day demo cleanup route.
+Unattached or abandoned upload records and objects are also removed after
+14 days. Keep logs free of request contents and tokens. Keep the cron secret
+private and verify scheduled execution in the deployment before treating
+retention as operational.

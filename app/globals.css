@@ -518,6 +518,20 @@ textarea:focus-visible {
   font-weight: 600;
 }
 
+.field .consent-label {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+}
+
+.field .consent-label input {
+  width: auto;
+  min-height: auto;
+  margin-top: 2px;
+  padding: 0;
+  accent-color: var(--ink);
+}
+
 .field input,
 .field select,
 .field textarea {
@@ -1545,6 +1559,169 @@ a.activity-feed-entry:hover strong {
   background: #f7f5ef;
 }
 
+.finance-page {
+  display: grid;
+  gap: 22px;
+}
+
+.finance-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.finance-summary-card {
+  display: grid;
+  gap: 8px;
+  padding: 20px;
+  border: 1px solid #d5d2c9;
+  background: #f7f5ef;
+}
+
+.finance-summary-card span,
+.finance-summary-card small,
+.finance-entry small {
+  color: var(--muted);
+}
+
+.finance-summary-card strong {
+  font-size: 20px;
+}
+
+.finance-summary-empty {
+  grid-column: 1 / -1;
+}
+
+.finance-table-grid {
+  display: grid;
+  gap: 18px;
+}
+
+.finance-entry-list {
+  display: grid;
+}
+
+.finance-entry {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 0;
+  border-bottom: 1px solid #e6e3dc;
+}
+
+.finance-entry:last-child {
+  border-bottom: 0;
+}
+
+.finance-entry > div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.finance-entry small {
+  overflow-wrap: anywhere;
+}
+
+.finance-readonly-note {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.assistant-page {
+  display: grid;
+  gap: 24px;
+  width: min(100% - 48px, 920px);
+  margin: 0 auto;
+  padding: 64px 0 96px;
+}
+
+.assistant-card {
+  display: grid;
+  gap: 18px;
+  padding: 24px;
+  border: 1px solid #d5d2c9;
+  background: #f7f5ef;
+}
+
+.assistant-disclaimer,
+.assistant-thinking {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.assistant-thread {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  min-height: 180px;
+  max-height: 440px;
+  overflow: auto;
+  padding: 14px;
+  border: 1px solid #e6e3dc;
+  background: #fffdf8;
+}
+
+.assistant-thread > .empty-state {
+  margin: auto;
+  text-align: center;
+}
+
+.assistant-message {
+  max-width: 90%;
+  padding: 12px 14px;
+  border: 1px solid #e6e3dc;
+  background: #f7f5ef;
+}
+
+.assistant-message-visitor {
+  justify-self: end;
+}
+
+.assistant-message-assistant {
+  justify-self: start;
+}
+
+.assistant-message strong {
+  font-family: var(--mono);
+  font-size: 10px;
+  text-transform: uppercase;
+}
+
+.assistant-message p {
+  margin: 6px 0 0;
+  white-space: pre-wrap;
+  line-height: 1.6;
+}
+
+.assistant-composer {
+  display: grid;
+  gap: 10px;
+}
+
+.assistant-composer label {
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.assistant-composer textarea {
+  width: 100%;
+  padding: 12px;
+  border: 1px solid #c9c5bb;
+  background: #fffdf8;
+  color: var(--ink);
+  font: inherit;
+  resize: vertical;
+}
+
+.assistant-composer .button-primary {
+  justify-self: end;
+}
+
 .channel-list {
   display: grid;
   gap: 12px;
@@ -1613,6 +1790,12 @@ a.activity-feed-entry:hover strong {
   font-family: var(--mono);
   font-size: 9px;
   text-transform: uppercase;
+}
+
+.project-channel-card p.presence-status {
+  color: var(--accent);
+  font-family: var(--mono);
+  font-size: 10px;
 }
 
 .project-channel-card p,
@@ -1810,7 +1993,8 @@ a.activity-feed-entry:hover strong {
 
   .team-overview-grid,
   .team-workspace-grid,
-  .team-chat-grid {
+  .team-chat-grid,
+  .finance-summary-grid {
     grid-template-columns: 1fr;
   }
 

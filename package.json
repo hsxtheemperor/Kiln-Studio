@@ -8,7 +8,8 @@
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:qstash": "vitest run tests/api/inquiry-reference-processing.test.ts tests/api/inquiry-reference-uploads.test.ts tests/api/inquiry-similarity-processing.test.ts tests/api/inquiry-similarity-workflow.test.ts tests/api/client-chat.test.ts tests/api/client-chat-workflow.test.ts tests/unit/client-chat-assistant.test.ts tests/unit/client-chat-queue.test.ts tests/unit/inquiry-reference-files.test.ts tests/unit/inquiry-reference-queue.test.ts tests/unit/inquiry-similarity-queue.test.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",
@@ -16,6 +17,8 @@
     "@upstash/qstash": "^2.12.1",
     "@upstash/ratelimit": "^2.0.8",
     "@upstash/redis": "^1.35.3",
+    "@upstash/vector": "^1.2.3",
+    "@upstash/workflow": "^1.5.0",
     "@vercel/speed-insights": "^2.1.0",
     "next": "^16.4.5",
     "react": "^19.1.1",

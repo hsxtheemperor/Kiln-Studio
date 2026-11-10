@@ -9,6 +9,7 @@ import {
   INQUIRY_REFERENCE_MIME_TYPES,
   MAX_INQUIRY_REFERENCE_BYTES,
   MAX_INQUIRY_REFERENCE_FILES,
+  MAX_INQUIRY_REFERENCE_TOTAL_BYTES,
 } from "@/lib/inquiries/reference-file-constants";
 
 type FieldErrors = Record<string, string[] | undefined>;
@@ -35,6 +36,7 @@ const initialValues = {
   references: "",
   time_budget: "",
   design_complexity: "",
+  similarity_opt_in: false,
 };
 
 const ReferenceUploadResponseSchema = z.object({
@@ -82,7 +84,10 @@ export function InquiryForm({ prefill }: { prefill?: PrefillValues }) {
     }));
   }, [prefill]);
 
-  function updateField(name: keyof typeof initialValues, value: string | number) {
+  function updateField(
+    name: keyof typeof initialValues,
+    value: string | number | boolean,
+  ) {
     setValues((current) => ({ ...current, [name]: value }));
     setFieldErrors((current) => ({ ...current, [name]: undefined }));
   }
@@ -100,6 +105,7 @@ export function InquiryForm({ prefill }: { prefill?: PrefillValues }) {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
+            website: values.website,
             files: referenceFiles.map((file) => ({
               name: file.name,
               type: file.type,
@@ -164,14 +170,15 @@ export function InquiryForm({ prefill }: { prefill?: PrefillValues }) {
       }
 
       sessionStorage.setItem("kiln-inquiry-saved", "true");
-      if (
+      const referenceFilesPending =
         typeof payload === "object" &&
         payload !== null &&
         "referenceFilesPending" in payload &&
-        payload.referenceFilesPending === true
-      ) {
-        sessionStorage.setItem("kiln-inquiry-reference-files-pending", "true");
-      }
+        payload.referenceFilesPending === true;
+      sessionStorage.setItem(
+        "kiln-inquiry-reference-files-pending",
+        String(referenceFilesPending),
+      );
       router.push("/inquiry/confirmation");
     } catch (error) {
       setFormError(
@@ -370,6 +377,7 @@ export function InquiryForm({ prefill }: { prefill?: PrefillValues }) {
               type="file"
               accept={INQUIRY_REFERENCE_MIME_TYPES.join(",")}
               multiple
+              disabled={isSubmitting}
               onChange={(event) => {
                 const files = Array.from(event.target.files ?? []);
                 setUploadedReferenceIds([]);
@@ -385,8 +393,12 @@ export function InquiryForm({ prefill }: { prefill?: PrefillValues }) {
                     file.size < 1 ||
                     file.size > MAX_INQUIRY_REFERENCE_BYTES,
                 );
-                if (invalidFile) {
-                  setFormError("Use JPEG, PNG, or WebP images, each no larger than 8 MB.");
+                if (
+                  invalidFile ||
+                  files.reduce((total, file) => total + file.size, 0) >
+                    MAX_INQUIRY_REFERENCE_TOTAL_BYTES
+                ) {
+                  setFormError("Use JPEG, PNG, or WebP images, each no larger than 8 MB and no more than 24 MB total.");
                   setReferenceFiles([]);
                   event.target.value = "";
                   return;
@@ -398,11 +410,14 @@ export function InquiryForm({ prefill }: { prefill?: PrefillValues }) {
             <p className="form-hint">
               Share up to {MAX_INQUIRY_REFERENCE_FILES} JPEG, PNG, or WebP images,
               up to {MAX_INQUIRY_REFERENCE_BYTES / (1024 * 1024)} MB each. Please
-              avoid sensitive or confidential material.
+              keep the selection under {MAX_INQUIRY_REFERENCE_TOTAL_BYTES / (1024 * 1024)} MB total
+              and avoid sensitive or confidential material.
             </p>
             {referenceFiles.length > 0 && (
               <ul className="form-hint">
-                {referenceFiles.map((file) => <li key={`${file.name}-${file.lastModified}`}>{file.name}</li>)}
+                {referenceFiles.map((file, index) => (
+                  <li key={`${file.name}-${file.lastModified}-${index}`}>{file.name}</li>
+                ))}
               </ul>
             )}
           </div>
@@ -410,6 +425,32 @@ export function InquiryForm({ prefill }: { prefill?: PrefillValues }) {
           <div className="field">
             <label htmlFor="design_complexity">Design complexity score (0 = unknown, 1 = least, 10 = highest)</label>
             <input id="design_complexity" type="number" min={0} max={10} value={values.design_complexity ?? ""} onChange={(event) => updateField("design_complexity", event.target.value)} />
+          </div>
+
+          <div className="field">
+            <label className="consent-label">
+              <input
+                type="checkbox"
+                name="similarity_opt_in"
+                checked={values.similarity_opt_in}
+                disabled={isSubmitting}
+                onChange={(event) =>
+                  updateField("similarity_opt_in", event.target.checked)
+                }
+              />{" "}
+              Help improve future estimates (optional)
+            </label>
+            <p className="form-hint">
+              If selected, your project brief and design details (goals, brand
+              message, audience, and desired outcomes) will be sent to OpenAI to
+              create an embedding and stored in Upstash Vector to find similar
+              opted-in requests. Your name, email, company, reference links,
+              and uploaded images are not sent. Please don&apos;t include
+              sensitive or confidential details in text you choose to share.
+              Similarity is advisory only and never changes your priority score.
+              You can ask the studio to remove this request from the similarity
+              index later.
+            </p>
           </div>
 
           <div className="honeypot" aria-hidden="true">

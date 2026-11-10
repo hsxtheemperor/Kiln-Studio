@@ -24,6 +24,7 @@ export async function queueInquiryReferenceProcessing(referenceIds: string[]) {
           url: `${siteUrl}/api/inquiries/process-reference`,
           body: { referenceId },
           retries: 5,
+          deduplicationId: `inquiry-reference-${referenceId}`,
         });
       } catch (error) {
         console.error("Reference image could not be queued; processing inline.", error);

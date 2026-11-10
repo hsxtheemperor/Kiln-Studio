@@ -67,6 +67,7 @@ DECLARE
   new_inquiry_id uuid;
   reference_count integer := COALESCE(pg_catalog.cardinality(p_reference_ids), 0);
   available_reference_count bigint;
+  total_reference_bytes bigint;
 BEGIN
   IF reference_count > 4
     OR reference_count <> (
@@ -78,14 +79,18 @@ BEGIN
     RAISE EXCEPTION 'Invalid reference file selection.';
   END IF;
 
-  SELECT pg_catalog.count(*)
-  INTO available_reference_count
+  SELECT
+    pg_catalog.count(*),
+    COALESCE(pg_catalog.sum(reference_files.byte_size), 0)
+  INTO available_reference_count, total_reference_bytes
   FROM public.inquiry_reference_files AS reference_files
   WHERE reference_files.id = ANY(COALESCE(p_reference_ids, ARRAY[]::uuid[]))
     AND reference_files.inquiry_id IS NULL
     AND reference_files.status = 'awaiting_upload';
 
-  IF available_reference_count <> reference_count THEN
+  IF available_reference_count <> reference_count
+    OR total_reference_bytes > 25165824
+  THEN
     RAISE EXCEPTION 'One or more reference files are unavailable.';
   END IF;
 

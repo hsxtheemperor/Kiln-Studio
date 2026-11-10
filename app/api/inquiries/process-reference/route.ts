@@ -6,6 +6,38 @@ import { processInquiryReferenceFile } from "@/lib/inquiries/reference-files";
 export const runtime = "nodejs";
 
 const PayloadSchema = z.object({ referenceId: z.string().uuid() }).strict();
+const MAX_TASK_BODY_BYTES = 8_192;
+
+async function readTaskBody(request: Request) {
+  const reader = request.body?.getReader();
+  if (!reader) {
+    return "";
+  }
+
+  const chunks: Uint8Array[] = [];
+  let totalBytes = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) {
+      break;
+    }
+
+    totalBytes += value.byteLength;
+    if (totalBytes > MAX_TASK_BODY_BYTES) {
+      await reader.cancel();
+      return null;
+    }
+    chunks.push(value);
+  }
+
+  const body = new Uint8Array(totalBytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    body.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return new TextDecoder().decode(body);
+}
 
 export async function POST(request: Request) {
   const currentSigningKey = process.env.QSTASH_CURRENT_SIGNING_KEY;
@@ -25,7 +57,21 @@ export async function POST(request: Request) {
     );
   }
 
-  const rawBody = await request.text();
+  const contentLength = Number(request.headers.get("content-length"));
+  if (Number.isFinite(contentLength) && contentLength > MAX_TASK_BODY_BYTES) {
+    return NextResponse.json(
+      { error: "Task payload is too large." },
+      { status: 413, headers: { "Cache-Control": "no-store" } },
+    );
+  }
+
+  const rawBody = await readTaskBody(request);
+  if (rawBody === null) {
+    return NextResponse.json(
+      { error: "Task payload is too large." },
+      { status: 413, headers: { "Cache-Control": "no-store" } },
+    );
+  }
   try {
     const receiver = new Receiver({ currentSigningKey, nextSigningKey });
     const isValid = await receiver.verify({
