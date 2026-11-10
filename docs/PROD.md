@@ -71,12 +71,15 @@ been fully verified.
 5. For inquiry similarity, configure the OpenAI embedding key and Upstash
    Vector endpoint. Verify explicit consent, deletion/revocation behavior, and
    that only approved brief fields leave the application.
-6. For Slack, configure OAuth callback, Events API URL, event subscriptions,
-   encryption/signing secrets, and the scheduled `/api/slack/sync` worker.
-   Verify only in a dedicated test workspace with synthetic records; see
-   [SLACK.md](./SLACK.md).
-7. Configure and monitor the protected demo-retention schedule. Do not assume
-   the 14-day cleanup is active merely because its route exists.
+6. Configure and monitor the single daily Vercel Cron at `/api/cron/daily`.
+   It runs Slack sync and then the 14-day demo-data cleanup. Vercel Hobby does
+   not support the previous every-minute Slack schedule, so delivery and
+   reconciliation may be delayed up to a day. Use a higher plan or a separately
+   secured external scheduler for more frequent Slack sync. Do not assume the
+   cleanup is active merely because its route exists.
+7. For Slack, configure OAuth callback, Events API URL, event subscriptions,
+   encryption/signing secrets, and test only in a dedicated workspace with
+   synthetic records; see [SLACK.md](./SLACK.md).
 8. Run `pnpm test`, `pnpm typecheck`, `pnpm build`, and the local Supabase
    migration/schema/pgTAP checks in CI. Validate provider setup and authorization
    in an explicitly designated test environment.

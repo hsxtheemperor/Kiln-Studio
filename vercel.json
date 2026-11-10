@@ -1,12 +1,8 @@
 {
   "crons": [
     {
-      "path": "/api/cron/demo-retention",
+      "path": "/api/cron/daily",
       "schedule": "0 3 * * *"
-    },
-    {
-      "path": "/api/slack/sync",
-      "schedule": "* * * * *"
     }
   ]
 }

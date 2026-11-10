@@ -44,8 +44,12 @@ subscriptions also depend on app configuration and workspace approval.
 Before testing a workspace, configure the Slack credentials and secrets listed
 in `.env.example`, apply the reviewed database migrations, register the exact
 OAuth callback URL, configure the Events API request URL, and enable the event
-subscriptions/scopes used by the app. Configure the deployed scheduler to
-invoke `/api/slack/sync` and monitor failed sync/outbox jobs.
+subscriptions/scopes used by the app. The Vercel Hobby configuration runs
+`/api/slack/sync` through the single `/api/cron/daily` entry point once per day,
+alongside demo-data retention. This meets Hobby's daily cron restriction, but
+Slack delivery and reconciliation can be delayed until that run. Use a Vercel
+plan that supports more frequent schedules or a separately secured external
+scheduler if faster Slack sync is required. Monitor failed sync/outbox jobs.
 
 Use only a workspace intended for testing and synthetic projects/messages.
 Do not post exploratory messages or create channels in an unrelated workspace.
