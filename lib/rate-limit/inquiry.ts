@@ -4,6 +4,7 @@ import { Ratelimit } from "@upstash/ratelimit";
 import { Redis } from "@upstash/redis";
 
 let limiter: Ratelimit | undefined;
+let uploadLimiter: Ratelimit | undefined;
 
 function getLimiter(): Ratelimit {
   if (limiter) {
@@ -26,4 +27,21 @@ function getLimiter(): Ratelimit {
 
 export async function checkInquiryRateLimit(identifier: string) {
   return getLimiter().limit(identifier);
+}
+
+export async function checkInquiryUploadRateLimit(identifier: string) {
+  if (!uploadLimiter) {
+    if (!process.env.UPSTASH_REDIS_REST_URL || !process.env.UPSTASH_REDIS_REST_TOKEN) {
+      throw new Error("Inquiry upload rate limiting is not configured.");
+    }
+
+    uploadLimiter = new Ratelimit({
+      redis: Redis.fromEnv(),
+      limiter: Ratelimit.slidingWindow(5, "10 m"),
+      prefix: "kiln-studio:inquiry-reference-uploads",
+      analytics: false,
+    });
+  }
+
+  return uploadLimiter.limit(identifier);
 }

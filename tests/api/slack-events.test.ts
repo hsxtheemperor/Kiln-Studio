@@ -71,10 +71,24 @@ describe("Slack Events API endpoint", () => {
 
   it("passes signed message events to the idempotent membership-aware database function", async () => {
     const rpc = vi.fn().mockResolvedValue({ data: "stored", error: null });
-    mocks.createSlackServiceClient.mockReturnValue({ rpc });
+    const installationQuery = {
+      select: vi.fn(),
+      eq: vi.fn(),
+      maybeSingle: vi.fn().mockResolvedValue({
+        data: { workspace_id: "T_KILN", is_active: true },
+        error: null,
+      }),
+    };
+    installationQuery.select.mockReturnValue(installationQuery);
+    installationQuery.eq.mockReturnValue(installationQuery);
+    mocks.createSlackServiceClient.mockReturnValue({
+      from: vi.fn().mockReturnValue(installationQuery),
+      rpc,
+    });
     const event = {
       type: "event_callback",
       event_id: "EvSlackTest0001",
+      team_id: "T_KILN",
       event: {
         type: "message",
         channel: "C_PROJECT",
@@ -88,6 +102,7 @@ describe("Slack Events API endpoint", () => {
 
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ ok: true, outcome: "stored" });
+    expect(installationQuery.eq).toHaveBeenNthCalledWith(1, "id", true);
     expect(rpc).toHaveBeenCalledWith("persist_slack_inbound_message", {
       p_event_id: "EvSlackTest0001",
       p_provider_channel_id: "C_PROJECT",
@@ -116,5 +131,69 @@ describe("Slack Events API endpoint", () => {
     const response = await POST(signedRequest(JSON.stringify(event)));
     expect(response.status).toBe(200);
     expect(rpc).not.toHaveBeenCalled();
+  });
+
+  it("acknowledges events from a different workspace without storing them", async () => {
+    const rpc = vi.fn();
+    const installationQuery = {
+      select: vi.fn(),
+      eq: vi.fn(),
+      maybeSingle: vi.fn().mockResolvedValue({
+        data: { workspace_id: "T_OTHER", is_active: true },
+        error: null,
+      }),
+    };
+    installationQuery.select.mockReturnValue(installationQuery);
+    installationQuery.eq.mockReturnValue(installationQuery);
+    mocks.createSlackServiceClient.mockReturnValue({
+      from: vi.fn().mockReturnValue(installationQuery),
+      rpc,
+    });
+    const event = {
+      type: "event_callback",
+      event_id: "EvSlackWrongWorkspace",
+      team_id: "T_KILN",
+      event: {
+        type: "message",
+        channel: "C_PROJECT",
+        user: "U_TEAM_MEMBER",
+        ts: "1794146400.000300",
+        text: "Do not store this",
+      },
+    };
+
+    const response = await POST(signedRequest(JSON.stringify(event)));
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ ok: true, outcome: "ignored" });
+    expect(rpc).not.toHaveBeenCalled();
+  });
+
+  it("revokes the stored token after a signed Slack uninstall event", async () => {
+    const updateQuery = {
+      update: vi.fn(),
+      eq: vi.fn(),
+      select: vi.fn(),
+      maybeSingle: vi.fn().mockResolvedValue({ data: { id: true }, error: null }),
+    };
+    updateQuery.update.mockReturnValue(updateQuery);
+    updateQuery.eq.mockReturnValue(updateQuery);
+    updateQuery.select.mockReturnValue(updateQuery);
+    const from = vi.fn().mockReturnValue(updateQuery);
+    mocks.createSlackServiceClient.mockReturnValue({ from });
+    const event = {
+      type: "event_callback",
+      team_id: "T_KILN",
+      event: { type: "app_uninstalled" },
+    };
+
+    const response = await POST(signedRequest(JSON.stringify(event)));
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ ok: true, outcome: "revoked" });
+    expect(updateQuery.update).toHaveBeenCalledWith(
+      expect.objectContaining({ is_active: false, encrypted_bot_token: null }),
+    );
+    expect(updateQuery.eq).toHaveBeenCalledWith("workspace_id", "T_KILN");
   });
 });

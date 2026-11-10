@@ -2,6 +2,15 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useState, type FormEvent } from "react";
+import { z } from "zod";
+import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
+import {
+  INQUIRY_REFERENCE_BUCKET,
+  INQUIRY_REFERENCE_MIME_TYPES,
+  MAX_INQUIRY_REFERENCE_BYTES,
+  MAX_INQUIRY_REFERENCE_FILES,
+  MAX_INQUIRY_REFERENCE_TOTAL_BYTES,
+} from "@/lib/inquiries/reference-file-constants";
 
 type FieldErrors = Record<string, string[] | undefined>;
 
@@ -27,7 +36,18 @@ const initialValues = {
   references: "",
   time_budget: "",
   design_complexity: "",
+  similarity_opt_in: false,
 };
+
+const ReferenceUploadResponseSchema = z.object({
+  uploads: z.array(
+    z.object({
+      id: z.string().uuid(),
+      path: z.string().min(1),
+      token: z.string().min(1),
+    }),
+  ),
+});
 
 function messageFromResponse(payload: unknown): string {
   if (
@@ -48,6 +68,8 @@ export function InquiryForm({ prefill }: { prefill?: PrefillValues }) {
   const [formError, setFormError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [step, setStep] = useState(1);
+  const [referenceFiles, setReferenceFiles] = useState<File[]>([]);
+  const [uploadedReferenceIds, setUploadedReferenceIds] = useState<string[]>([]);
 
   useEffect(() => {
     if (!prefill) {
@@ -62,7 +84,10 @@ export function InquiryForm({ prefill }: { prefill?: PrefillValues }) {
     }));
   }, [prefill]);
 
-  function updateField(name: keyof typeof initialValues, value: string | number) {
+  function updateField(
+    name: keyof typeof initialValues,
+    value: string | number | boolean,
+  ) {
     setValues((current) => ({ ...current, [name]: value }));
     setFieldErrors((current) => ({ ...current, [name]: undefined }));
   }
@@ -74,10 +99,59 @@ export function InquiryForm({ prefill }: { prefill?: PrefillValues }) {
     setIsSubmitting(true);
 
     try {
+      let referenceIds = uploadedReferenceIds;
+      if (referenceFiles.length > 0 && referenceIds.length !== referenceFiles.length) {
+        const uploadResponse = await fetch("/api/inquiries/reference-uploads", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            website: values.website,
+            files: referenceFiles.map((file) => ({
+              name: file.name,
+              type: file.type,
+              size: file.size,
+            })),
+          }),
+        });
+        const uploadPayload: unknown = await uploadResponse.json();
+        if (!uploadResponse.ok) {
+          throw new Error(messageFromResponse(uploadPayload));
+        }
+
+        const parsedUploadPayload = ReferenceUploadResponseSchema.safeParse(uploadPayload);
+        if (!parsedUploadPayload.success) {
+          throw new Error("We could not prepare your reference images. Please try again.");
+        }
+
+        const uploads = parsedUploadPayload.data.uploads;
+        if (uploads.length !== referenceFiles.length) {
+          throw new Error("We could not prepare your reference images. Please try again.");
+        }
+
+        const supabase = createSupabaseBrowserClient();
+        for (const [index, file] of referenceFiles.entries()) {
+          const upload = uploads[index];
+          const { error } = await supabase.storage
+            .from(INQUIRY_REFERENCE_BUCKET)
+            .uploadToSignedUrl(upload.path, upload.token, file, {
+              contentType: file.type,
+              upsert: false,
+            });
+          if (error) {
+            throw new Error(`Could not upload ${file.name}. Please try again.`);
+          }
+        }
+        referenceIds = uploads.map((upload) => upload.id);
+        setUploadedReferenceIds(referenceIds);
+      }
+
       const response = await fetch("/api/inquiries", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(values),
+        body: JSON.stringify({
+          ...values,
+          reference_upload_ids: referenceIds,
+        }),
       });
       const payload: unknown = await response.json();
 
@@ -96,9 +170,22 @@ export function InquiryForm({ prefill }: { prefill?: PrefillValues }) {
       }
 
       sessionStorage.setItem("kiln-inquiry-saved", "true");
+      const referenceFilesPending =
+        typeof payload === "object" &&
+        payload !== null &&
+        "referenceFilesPending" in payload &&
+        payload.referenceFilesPending === true;
+      sessionStorage.setItem(
+        "kiln-inquiry-reference-files-pending",
+        String(referenceFilesPending),
+      );
       router.push("/inquiry/confirmation");
-    } catch {
-      setFormError("We could not reach the server. Please try again.");
+    } catch (error) {
+      setFormError(
+        error instanceof Error
+          ? error.message
+          : "We could not reach the server or upload your reference images. Please try again.",
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -281,8 +368,89 @@ export function InquiryForm({ prefill }: { prefill?: PrefillValues }) {
           </div>
 
           <div className="field">
+            <label htmlFor="reference-images">
+              Upload visual references <span className="form-hint">(optional)</span>
+            </label>
+            <input
+              id="reference-images"
+              name="reference-images"
+              type="file"
+              accept={INQUIRY_REFERENCE_MIME_TYPES.join(",")}
+              multiple
+              disabled={isSubmitting}
+              onChange={(event) => {
+                const files = Array.from(event.target.files ?? []);
+                setUploadedReferenceIds([]);
+                if (files.length > MAX_INQUIRY_REFERENCE_FILES) {
+                  setFormError(`Choose no more than ${MAX_INQUIRY_REFERENCE_FILES} images.`);
+                  setReferenceFiles([]);
+                  event.target.value = "";
+                  return;
+                }
+                const invalidFile = files.find(
+                  (file) =>
+                    !INQUIRY_REFERENCE_MIME_TYPES.some((type) => type === file.type) ||
+                    file.size < 1 ||
+                    file.size > MAX_INQUIRY_REFERENCE_BYTES,
+                );
+                if (
+                  invalidFile ||
+                  files.reduce((total, file) => total + file.size, 0) >
+                    MAX_INQUIRY_REFERENCE_TOTAL_BYTES
+                ) {
+                  setFormError("Use JPEG, PNG, or WebP images, each no larger than 8 MB and no more than 24 MB total.");
+                  setReferenceFiles([]);
+                  event.target.value = "";
+                  return;
+                }
+                setFormError("");
+                setReferenceFiles(files);
+              }}
+            />
+            <p className="form-hint">
+              Share up to {MAX_INQUIRY_REFERENCE_FILES} JPEG, PNG, or WebP images,
+              up to {MAX_INQUIRY_REFERENCE_BYTES / (1024 * 1024)} MB each. Please
+              keep the selection under {MAX_INQUIRY_REFERENCE_TOTAL_BYTES / (1024 * 1024)} MB total
+              and avoid sensitive or confidential material.
+            </p>
+            {referenceFiles.length > 0 && (
+              <ul className="form-hint">
+                {referenceFiles.map((file, index) => (
+                  <li key={`${file.name}-${file.lastModified}-${index}`}>{file.name}</li>
+                ))}
+              </ul>
+            )}
+          </div>
+
+          <div className="field">
             <label htmlFor="design_complexity">Design complexity score (0 = unknown, 1 = least, 10 = highest)</label>
             <input id="design_complexity" type="number" min={0} max={10} value={values.design_complexity ?? ""} onChange={(event) => updateField("design_complexity", event.target.value)} />
+          </div>
+
+          <div className="field">
+            <label className="consent-label">
+              <input
+                type="checkbox"
+                name="similarity_opt_in"
+                checked={values.similarity_opt_in}
+                disabled={isSubmitting}
+                onChange={(event) =>
+                  updateField("similarity_opt_in", event.target.checked)
+                }
+              />{" "}
+              Help improve future estimates (optional)
+            </label>
+            <p className="form-hint">
+              If selected, your project brief and design details (goals, brand
+              message, audience, and desired outcomes) will be sent to OpenAI to
+              create an embedding and stored in Upstash Vector to find similar
+              opted-in requests. Your name, email, company, reference links,
+              and uploaded images are not sent. Please don&apos;t include
+              sensitive or confidential details in text you choose to share.
+              Similarity is advisory only and never changes your priority score.
+              You can ask the studio to remove this request from the similarity
+              index later.
+            </p>
           </div>
 
           <div className="honeypot" aria-hidden="true">

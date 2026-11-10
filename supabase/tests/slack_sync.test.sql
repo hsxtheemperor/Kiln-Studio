@@ -1,6 +1,35 @@
 BEGIN;
 
-SELECT plan(9);
+SELECT plan(10);
+
+SELECT set_config(
+  'request.jwt.claims',
+  '{"sub":"11000000-0000-0000-0000-000000000001","role":"authenticated","app_metadata":{"access_level":"studio_member"}}',
+  true
+);
+SELECT set_config(
+  'request.jwt.claim.sub',
+  '11000000-0000-0000-0000-000000000001',
+  true
+);
+
+INSERT INTO auth.users (
+  id, aud, role, email, encrypted_password, email_confirmed_at,
+  raw_app_meta_data, raw_user_meta_data, created_at, updated_at
+)
+VALUES (
+  '11000000-0000-0000-0000-000000000001',
+  'authenticated',
+  'authenticated',
+  'slack-admin@example.test',
+  '',
+  now(),
+  '{"provider":"email","providers":["email"]}',
+  '{}',
+  now(),
+  now()
+)
+ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO public.team_members (id, user_id, full_name, email)
 VALUES
@@ -31,11 +60,6 @@ SELECT id, '21000000-0000-0000-0000-000000000002', 'DESIGNER'
 FROM public.projects
 WHERE inquiry_id = '31000000-0000-0000-0000-000000000001';
 
-INSERT INTO public.slack_user_mappings (team_member_id, slack_user_id, linked_by)
-VALUES
-  ('21000000-0000-0000-0000-000000000002', 'USLACKDESIGNER', '11000000-0000-0000-0000-000000000001'),
-  ('21000000-0000-0000-0000-000000000003', 'USLACKUNASSIGNED', '11000000-0000-0000-0000-000000000001');
-
 INSERT INTO public.slack_project_channels (project_id, slack_channel_id, slack_channel_name)
 SELECT id, 'CSLACKPROJECT', 'kiln-project-test'
 FROM public.projects
@@ -46,6 +70,18 @@ SELECT is(
    WHERE project_id = (SELECT id FROM public.projects WHERE inquiry_id = '31000000-0000-0000-0000-000000000001')),
   1::bigint,
   'project channel creation queues a Slack sync job'
+);
+
+INSERT INTO public.slack_user_mappings (team_member_id, slack_user_id, linked_by)
+VALUES
+  ('21000000-0000-0000-0000-000000000002', 'USLACKDESIGNER', '11000000-0000-0000-0000-000000000001'),
+  ('21000000-0000-0000-0000-000000000003', 'USLACKUNASSIGNED', '11000000-0000-0000-0000-000000000001');
+
+SELECT is(
+  (SELECT action FROM public.slack_project_sync_jobs
+   WHERE project_id = (SELECT id FROM public.projects WHERE inquiry_id = '31000000-0000-0000-0000-000000000001')),
+  'sync_members',
+  'linking a Slack user queues project channel membership reconciliation'
 );
 
 SELECT ok(
@@ -85,12 +121,16 @@ SELECT is(
   'a linked current project member can persist an inbound Slack message'
 );
 
+RESET ROLE;
+
 SELECT is(
   (SELECT count(*) FROM public.project_channel_messages
    WHERE message_source = 'slack' AND body = 'Slack-originated message'),
   1::bigint,
   'inbound Slack messages are stored as project channel messages'
 );
+
+SET LOCAL ROLE service_role;
 
 SELECT is(
   public.persist_slack_inbound_message(
@@ -116,12 +156,16 @@ SELECT is(
   'Slack users without current project membership cannot write to app history'
 );
 
+RESET ROLE;
+
 SELECT is(
   (SELECT count(*) FROM public.project_channel_messages
    WHERE message_source = 'slack' AND body = 'Message from a non-member'),
   0::bigint,
   'ignored Slack messages are not visible in project history'
 );
+
+SET LOCAL ROLE service_role;
 
 SELECT ok(
   (SELECT count(*) FROM public.claim_slack_message_outbox(10)) > 0,

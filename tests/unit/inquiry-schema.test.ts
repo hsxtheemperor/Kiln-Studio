@@ -21,6 +21,7 @@ describe("PublicInquirySchema", () => {
     const parsed = PublicInquirySchema.parse(validSubmission);
     expect(parsed.name).toBe("Ada Lovelace");
     expect(parsed.email).toBe("ada@example.com");
+    expect(parsed.similarity_opt_in).toBe(false);
     expect(toInquiryInsert(parsed)).toEqual({
       name: "Ada Lovelace",
       email: "ada@example.com",
@@ -30,6 +31,21 @@ describe("PublicInquirySchema", () => {
       budget_range: null,
       timeline: null,
     });
+  });
+
+  it("accepts only an explicit boolean for optional similarity consent", () => {
+    expect(
+      PublicInquirySchema.parse({
+        ...validSubmission,
+        similarity_opt_in: true,
+      }).similarity_opt_in,
+    ).toBe(true);
+    expect(
+      PublicInquirySchema.safeParse({
+        ...validSubmission,
+        similarity_opt_in: "true",
+      }).success,
+    ).toBe(false);
   });
 
   it("rejects empty or oversized required fields", () => {
@@ -73,5 +89,27 @@ describe("PublicInquirySchema", () => {
     expect(parsed.website).toBe("");
     expect(toInquiryInsert(parsed)).not.toHaveProperty("website");
     expect(toInquiryInsert(parsed).service).toBe("web_design");
+  });
+
+  it("accepts optional unique reference upload IDs but rejects malformed or duplicated IDs", () => {
+    const referenceId = "40000000-0000-4000-8000-000000000001";
+    expect(
+      PublicInquirySchema.parse({
+        ...validSubmission,
+        reference_upload_ids: [referenceId],
+      }).reference_upload_ids,
+    ).toEqual([referenceId]);
+    expect(
+      PublicInquirySchema.safeParse({
+        ...validSubmission,
+        reference_upload_ids: ["not-a-uuid"],
+      }).success,
+    ).toBe(false);
+    expect(
+      PublicInquirySchema.safeParse({
+        ...validSubmission,
+        reference_upload_ids: [referenceId, referenceId],
+      }).success,
+    ).toBe(false);
   });
 });

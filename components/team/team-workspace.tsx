@@ -7,6 +7,15 @@ import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
 import type { ProjectChannelMessageRow } from "@/lib/supabase/database.types";
 import type { ProjectChannelView, ProjectManagerOption } from "@/lib/studio/project-channels";
 
+type ChannelPresence = {
+  online_member_ids: string[];
+  typing_member_ids: string[];
+};
+
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((item) => typeof item === "string");
+}
+
 const projectMemberRoles = [
   "TEAM_MEMBER",
   "DESIGNER",
@@ -48,6 +57,12 @@ export function TeamWorkspace({
   const router = useRouter();
   const searchParams = useSearchParams();
   const slackStatus = searchParams.get("slack");
+  const [slackConnection, setSlackConnection] = useState<{
+    workspaceInstalled: boolean;
+    accountLinked: boolean;
+    workspaceName: string | null;
+  } | null>(null);
+  const [slackConnectionError, setSlackConnectionError] = useState("");
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [projectError, setProjectError] = useState("");
   const [savingProjectId, setSavingProjectId] = useState<string | null>(null);
@@ -59,6 +74,10 @@ export function TeamWorkspace({
   >(() =>
     Object.fromEntries(liveProjectChannels.map((channel) => [channel.id, channel.messages])),
   );
+  const [presenceByChannel, setPresenceByChannel] = useState<
+    Record<string, ChannelPresence>
+  >({});
+  const [presenceErrors, setPresenceErrors] = useState<Record<string, string>>({});
   const [membersByProject, setMembersByProject] = useState<
     Record<string, ProjectChannelView["members"]>
   >(() =>
@@ -73,6 +92,46 @@ export function TeamWorkspace({
       Object.fromEntries(liveProjectChannels.map((channel) => [channel.project_id, channel.members])),
     );
   }, [liveProjectChannels]);
+
+  useEffect(() => {
+    let active = true;
+    void fetch("/api/slack/status", { cache: "no-store" })
+      .then(async (response) => {
+        const payload: unknown = await response.json();
+        if (!response.ok) throw new Error(getErrorMessage(payload, "Slack status is unavailable."));
+        if (
+          typeof payload === "object" &&
+          payload !== null &&
+          "workspaceInstalled" in payload &&
+          typeof payload.workspaceInstalled === "boolean" &&
+          "accountLinked" in payload &&
+          typeof payload.accountLinked === "boolean" &&
+          "workspaceName" in payload &&
+          (typeof payload.workspaceName === "string" || payload.workspaceName === null)
+        ) {
+          if (active) {
+            setSlackConnection({
+              workspaceInstalled: payload.workspaceInstalled,
+              accountLinked: payload.accountLinked,
+              workspaceName: payload.workspaceName,
+            });
+          }
+          return;
+        }
+        throw new Error("Slack status response was invalid.");
+      })
+      .catch((error: unknown) => {
+        if (active) {
+          setSlackConnectionError(
+            error instanceof Error ? error.message : "Slack connection status is unavailable.",
+          );
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (!liveProjectChannels.length) return;
@@ -111,6 +170,138 @@ export function TeamWorkspace({
       }
     };
   }, [liveProjectChannels, router]);
+
+  useEffect(() => {
+    const activeChannels = liveProjectChannels.filter(
+      (channel) => channel.project_status === "active" && !channel.is_archived,
+    );
+    if (!activeChannels.length) return;
+
+    let active = true;
+    async function refreshPresence(channel: ProjectChannelView) {
+      try {
+        const response = await fetch(
+          `/api/projects/${channel.project_id}/presence?channel_id=${channel.id}`,
+          { cache: "no-store" },
+        );
+        const payload: unknown = await response.json();
+        if (!response.ok) {
+          throw new Error(getErrorMessage(payload, "Presence is temporarily unavailable."));
+        }
+        const onlineMemberIds =
+          typeof payload === "object" && payload !== null && "online_member_ids" in payload
+            ? payload.online_member_ids
+            : undefined;
+        const typingMemberIds =
+          typeof payload === "object" && payload !== null && "typing_member_ids" in payload
+            ? payload.typing_member_ids
+            : undefined;
+        if (
+          !isStringArray(onlineMemberIds) ||
+          !isStringArray(typingMemberIds)
+        ) {
+          throw new Error("Presence response was invalid.");
+        }
+        if (active) {
+          setPresenceByChannel((current) => ({
+            ...current,
+            [channel.id]: {
+              online_member_ids: onlineMemberIds,
+              typing_member_ids: typingMemberIds,
+            },
+          }));
+          setPresenceErrors((current) => ({ ...current, [channel.id]: "" }));
+        }
+      } catch (error) {
+        if (active) {
+          setPresenceErrors((current) => ({
+            ...current,
+            [channel.id]:
+              error instanceof Error ? error.message : "Presence is temporarily unavailable.",
+          }));
+        }
+      }
+    }
+
+    async function heartbeat(channel: ProjectChannelView) {
+      try {
+        const response = await fetch(`/api/projects/${channel.project_id}/presence`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ channel_id: channel.id }),
+        });
+        if (!response.ok) {
+          const payload: unknown = await response.json();
+          throw new Error(getErrorMessage(payload, "Presence is temporarily unavailable."));
+        }
+      } catch (error) {
+        if (active) {
+          setPresenceErrors((current) => ({
+            ...current,
+            [channel.id]:
+              error instanceof Error ? error.message : "Presence is temporarily unavailable.",
+          }));
+        }
+      }
+    }
+
+    const refreshAll = () => {
+      for (const channel of activeChannels) void refreshPresence(channel);
+    };
+    const heartbeatAll = () => {
+      for (const channel of activeChannels) void heartbeat(channel);
+    };
+
+    for (const channel of activeChannels) {
+      void heartbeat(channel).then(() => refreshPresence(channel));
+    }
+    const refreshTimer = window.setInterval(refreshAll, 10_000);
+    const heartbeatTimer = window.setInterval(heartbeatAll, 20_000);
+
+    return () => {
+      active = false;
+      window.clearInterval(refreshTimer);
+      window.clearInterval(heartbeatTimer);
+      for (const channel of activeChannels) {
+        void fetch(
+          `/api/projects/${channel.project_id}/presence?channel_id=${channel.id}`,
+          { method: "DELETE", keepalive: true },
+        );
+      }
+    };
+  }, [liveProjectChannels]);
+
+  useEffect(() => {
+    const timers = liveProjectChannels
+      .filter((channel) => channel.project_status === "active" && !channel.is_archived)
+      .map((channel) =>
+        window.setTimeout(() => {
+          void fetch(`/api/projects/${channel.project_id}/presence`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              channel_id: channel.id,
+              typing: Boolean(drafts[channel.id]?.trim()),
+            }),
+          }).then(async (response) => {
+            if (!response.ok) {
+              const payload: unknown = await response.json();
+              throw new Error(getErrorMessage(payload, "Typing status is unavailable."));
+            }
+          }).catch((error: unknown) => {
+            setPresenceErrors((current) => ({
+              ...current,
+              [channel.id]:
+                error instanceof Error ? error.message : "Typing status is unavailable.",
+            }));
+          });
+        }, 400),
+      );
+
+    return () => {
+      for (const timer of timers) window.clearTimeout(timer);
+    };
+  }, [drafts, liveProjectChannels]);
 
   async function sendMessage(channel: ProjectChannelView) {
     const body = (drafts[channel.id] ?? "").trim();
@@ -284,6 +475,18 @@ export function TeamWorkspace({
             Link your verified Slack account to connect project conversations. Kiln Studio continues
             to control project membership and message access.
           </p>
+          {slackConnectionError && (
+            <p className="form-error" role="status">{slackConnectionError}</p>
+          )}
+          {slackConnection && (
+            <p className={slackConnection.accountLinked ? "form-success" : "empty-state"} role="status">
+              {slackConnection.accountLinked
+                ? `Slack account linked${slackConnection.workspaceName ? ` to ${slackConnection.workspaceName}` : ""}.`
+                : slackConnection.workspaceInstalled
+                  ? "Workspace connected. Link your Slack account to join project channels."
+                  : "No Slack workspace is currently connected."}
+            </p>
+          )}
           {slackStatus && (
             <p
               className={
@@ -303,7 +506,9 @@ export function TeamWorkspace({
                       ? "Use the Slack workspace installed by the studio admin."
                       : slackStatus === "team_profile_required"
                         ? "A team profile is required before linking Slack."
-                        : "Slack could not be connected. Check the app configuration and try again."}
+                              : slackStatus === "workspace_change_required"
+                                ? "This app is already connected to another workspace. Disconnect it there before changing workspaces."
+                              : "Slack could not be connected. Check the app configuration and try again."}
             </p>
           )}
         </div>
@@ -313,9 +518,11 @@ export function TeamWorkspace({
               Install or reconnect workspace
             </a>
           )}
-          <a className="button-secondary" href="/api/slack/connect">
-            Link my Slack account
-          </a>
+          {slackConnection?.workspaceInstalled && (
+            <a className="button-secondary" href="/api/slack/connect">
+              {slackConnection.accountLinked ? "Relink my Slack account" : "Link my Slack account"}
+            </a>
+          )}
         </div>
       </section>
 
@@ -472,6 +679,10 @@ export function TeamWorkspace({
             channel.project_status === "active";
           const channelMembers = membersByProject[channel.project_id] ?? channel.members;
           const channelMessages = messagesByChannel[channel.id] ?? channel.messages;
+          const channelPresence = presenceByChannel[channel.id];
+          const typingNames = channelMembers
+            .filter((member) => channelPresence?.typing_member_ids.includes(member.team_member_id))
+            .map((member) => member.full_name);
           const assignedMemberIds = new Set(channelMembers.map((member) => member.team_member_id));
           const availableMembers = (teamMemberOptions ?? []).filter(
             (member) => !assignedMemberIds.has(member.id),
@@ -482,9 +693,19 @@ export function TeamWorkspace({
               <div className="project-channel-head">
                 <strong>#{channel.channel_name}</strong>
                 <span>
-                  {channel.is_archived ? "Archived" : `${channelMembers.length} members`}
+                  {channel.is_archived
+                    ? "Archived"
+                    : `${channelPresence?.online_member_ids.length ?? 0} online · ${channelMembers.length} members`}
                 </span>
               </div>
+              {typingNames.length > 0 && (
+                <p className="presence-status" aria-live="polite">
+                  {typingNames.join(", ")} {typingNames.length === 1 ? "is" : "are"} typing
+                </p>
+              )}
+              {presenceErrors[channel.id] && (
+                <p className="form-error" role="status">{presenceErrors[channel.id]}</p>
+              )}
               <p>{channel.description}</p>
 
               <div className="project-members-list">

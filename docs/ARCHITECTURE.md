@@ -11,10 +11,18 @@ Public browser
   ├─ Public site and inquiry form
   │    └─ POST /api/inquiries
   │         ├─ Zod validation, honeypot, Upstash rate limit
-  │         ├─ server-only atomic inquiry + brief persistence
+  │         ├─ optional signed Supabase Storage image uploads
+  │         ├─ server-only atomic inquiry + brief + image-link persistence
+  │         └─ QStash image verification job (inline fallback locally)
+  │           └─ explicit opt-in Upstash Workflow embedding and Vector similarity run
   │         └─ computed priority on the inquiry
   └─ Client account
        └─ Supabase Auth cookie session → client profile / owned inquiries
+  └─ Site-wide support assistant
+       ├─ Redis rate limit → retryable Upstash Workflow
+       ├─ Gemini Flash function-calling loop over static public-information tools
+       ├─ short-lived Redis result for browser polling
+       └─ idempotent question/answer persistence in Supabase; no separate account/IP metadata
 
 Studio browser
   ├─ Admin sign-in → studio_member app_metadata
@@ -22,11 +30,12 @@ Studio browser
   │    └─ project operations: PM assignment, deadlines, completion, channel ordering
   └─ Designer sign-in → designer or studio_member app_metadata
        ├─ priority queue and inquiry message room
-       └─ Team page with live project membership and persistent channel messages
+       └─ Team page with live project membership, persistent messages, and Redis presence
 
 Next.js server and Route Handlers
   └─ Supabase Auth/Postgres; cookie-bound client for user-scoped operations
        ├─ inquiry and extended-brief RPC
+       ├─ private inquiry-reference storage and QStash verification callback
        ├─ project lifecycle and system activity triggers
        ├─ authenticated project-membership and channel-message writes
        └─ database-only finance and quarterly-report schema
@@ -58,22 +67,33 @@ Next.js route groups organize layouts without adding URL prefixes.
 | `app/globals.css` | Shared public, admin, designer, and Team visual system. |
 | `app/(public)/page.tsx`, `services/page.tsx`, `work/page.tsx` | Public landing, service, and fictional concept-work pages. |
 | `app/(public)/inquiry/page.tsx` | Inquiry entry point and optional client prefill. |
+| `app/(public)/assistant/page.tsx` | Full-page public customer-support assistant entry point. |
 | `components/inquiry/inquiry-form.tsx` | Client-side form UX; server validation remains authoritative. |
 | `components/inquiry/confirmation-gate.tsx` | Prevents direct access from appearing to confirm an unsaved request. |
+| `components/assistant/client-chat.tsx` | Public assistant conversation UI with bounded context, Workflow polling, and question-storage disclosure. |
+| `components/assistant/support-chat-widget.tsx` | Site-wide floating assistant panel for public pages. |
+| `components/admin/inquiry-detail.tsx` | Shows inquiry details and secure, temporary previews of verified reference images. |
 | `app/(public)/account/` and `components/client/` | Client auth forms and request-list/detail views. |
 | `app/(admin)/admin/page.tsx` | Loads and renders the admin dashboard. |
+| `app/(admin)/admin/finance/page.tsx` | Studio-member-only, read-only finance overview for latest report totals and recent entries. |
 | `components/admin/admin-dashboard.tsx` | Inquiry summary, top priority, latest inquiries, live system activity, and team overview. |
 | `components/admin/admin-frame.tsx` | Admin shell/navigation and sign-out UI. |
 | `components/admin/activity-feed.tsx` | Admin-only initial activity list and live Supabase Realtime subscription, rendered with RLS-protected session data. |
 | `components/admin/inquiry-inbox.tsx`, `inquiry-detail.tsx` | Inquiry list/filter/pagination and status update UI. |
-| `components/team/team-workspace.tsx` | Active team directory, project membership management, and persisted project-channel conversations. |
+| `components/team/team-workspace.tsx` | Active team directory, project membership management, persisted project-channel conversations, and ephemeral presence indicators. |
 | `components/designer/designer-project-room.tsx` | Designer/client-request message interface. |
 
 ### API and shared server logic
 
 | File | Responsibility |
 | --- | --- |
-| `app/api/inquiries/route.ts` | Public request validation, abuse controls, priority computation, and atomic inquiry/brief persistence. |
+| `app/api/inquiries/route.ts` | Public request validation, abuse controls, priority computation, and atomic inquiry/brief/reference linking. |
+| `app/api/inquiries/reference-uploads/route.ts` | Validates image metadata, rate-limits upload initialization, and issues one-use signed upload URLs for a private bucket. |
+| `app/api/inquiries/process-reference/route.ts` | Verifies QStash signatures and uploaded image bytes before marking references ready. |
+| `app/api/inquiries/process-similarity/route.ts` | Verifies QStash signatures and runs consent-gated inquiry embedding and similarity matching. |
+| `app/api/workflows/inquiry-similarity/route.ts` | Exposes the durable, retryable Upstash Workflow endpoint for opted-in inquiry similarity processing. |
+| `app/api/client-chat/route.ts` | Rate-limits public assistant questions and reads short-lived response state. |
+| `app/api/workflows/client-chat/route.ts` | Runs public-information assistant generation and result storage as retryable Workflow steps. |
 | `app/api/client/auth/route.ts` | Client sign-in/up; creates/updates profile and optional single company record. |
 | `app/api/admin/auth/route.ts` | Studio-member sign-in/sign-out. |
 | `app/api/designer/auth/route.ts` | Designer/studio-member sign-in gate. |
@@ -81,8 +101,16 @@ Next.js route groups organize layouts without adding URL prefixes.
 | `app/api/designer/messages/route.ts` | Protected inquiry-linked designer message reads/writes. |
 | `app/api/projects/[id]/members/route.ts` | Adds and removes project team members using the authenticated session; RLS authorizes administrators/project managers. |
 | `app/api/projects/[id]/messages/route.ts` | Persists project-channel messages with sender identity derived from the authenticated team profile. |
+| `app/api/projects/[id]/presence/route.ts` | Exposes project-member-only online and typing state using short-lived Upstash Redis keys. |
 | `lib/studio/project-channels.ts` | Loads RLS-filtered ordered project channels, current memberships, and recent channel messages. |
 | `lib/inquiries/schema.ts` | Inquiry options, validation, normalization, and database insert mapping. |
+| `lib/inquiries/reference-files.ts`, `reference-queue.ts` | Image constraints, content verification, and QStash delivery with local inline fallback. |
+| `lib/inquiries/similarity.ts`, `similarity-queue.ts` | Builds approved inquiry text, requests embeddings, stores/query vectors, and triggers consent-gated Workflow processing. |
+| `lib/assistant/client-chat.ts` | Calls Gemini 3.8 Flash (3.5 Flash-Lite fallback) with public-only context and a bounded allowlisted function-calling loop. |
+| `lib/assistant/client-chat-queue.ts` | Queues assistant work through Upstash Workflow and stores transient polling results in Redis for ten minutes. |
+| `lib/assistant/customer-support-messages.ts` | Persists idempotent Q&A pairs through the server-only Supabase service client without separate account/IP metadata; submitted text is not scrubbed. |
+| `lib/rate-limit/client-chat.ts` | Applies shared Redis rate limiting to public assistant requests. |
+| `lib/supabase/service.ts` | Server-only Supabase service-role client for narrowly scoped privileged work. |
 | `lib/project-priority.ts` | Priority score and label computation. |
 | `lib/studio/constants.ts` | UI constants/types for availability, roles, channels, and labels. |
 | `lib/auth/require-*.ts` | Cookie-bound session verification and access-level checks. |
@@ -111,10 +139,13 @@ Next.js route groups organize layouts without adding URL prefixes.
 | `supabase/migrations/20261108050000_align_inquiry_priority_and_finance.sql` | Renames briefs to `inquiry_briefs`, moves priority onto inquiries, restricts the activity feed to studio members, and adds normalized finance and quarterly-report tables/functions. |
 | `supabase/migrations/20261108060000_enable_system_activity_realtime.sql` | Adds the RLS-protected system activity table to Supabase Realtime publication. |
 | `supabase/migrations/20261108070000_restrict_membership_changes_to_active_projects.sql` | Prevents adding or changing project roles after completion while preserving membership removal for access revocation. |
-| `supabase/tests/` | pgTAP coverage for inquiry priority/atomic writes, project lifecycle and RLS, finance/report behavior, grants, team roles, and channel rules. |
-| `.github/workflows/ci.yml` | Runs application tests/typecheck/build and clean local Supabase migration, lint, and pgTAP checks on PRs and pushes to `main`; no deployment. |
+| `supabase/migrations/20261109010000_add_inquiry_reference_uploads.sql` | Adds a private image bucket, server-only attachment metadata, and atomic inquiry-linking RPC. |
+| `supabase/migrations/20261109020000_add_opt_in_inquiry_similarity.sql` | Adds inquiry similarity consent/review state and extends atomic inquiry creation. |
+| `supabase/migrations/20261111000000_add_customer_support_messages.sql` | Adds a service-role-only table for customer-support Q&A curation without separate account/IP metadata; submitted text is not scrubbed. |
+| `supabase/tests/` | pgTAP coverage for inquiry priority/atomic writes, reference-file access and linking, project lifecycle and RLS, finance/report behavior, grants, team roles, channel rules, and support-message privacy/idempotency. |
+| `.github/workflows/ci.yml` | Runs application tests, QStash/Workflow-focused checks, typecheck/build, and clean local Supabase migration, lint, and pgTAP checks on pull requests and all pushes; no deployment. |
 | `lib/supabase/database.types.ts` | Application-side Supabase row/insert types. |
-| `tests/unit/`, `tests/lib/`, `tests/api/` | Focused validation, priority, and API/auth tests. |
+| `tests/unit/`, `tests/lib/`, `tests/api/` | Focused validation, priority, upload/queue, similarity, and API/auth tests. |
 | `tests/e2e/` | Placeholder for browser-level workflows. |
 | `docs/` | Current architecture, schema, demo, project status, and production direction. |
 
@@ -135,16 +166,47 @@ client account/profile flows, admin inquiry reads and status/priority updates,
 and designer inquiry messaging (subject to the deployed Supabase policies and
 configuration).
 
+**Inquiry similarity:** clients may explicitly opt in to similarity processing.
+Only approved design-brief text is sent for embedding; Upstash Vector stores
+vectors and inquiry IDs, while consent, review metrics, and match references
+remain in Postgres. Similarity is advisory and does not change priority. Admins
+can inspect matches, retry opted-in work, or remove consent. The
+Upstash Workflow SDK verifies workflow requests and handles durable steps;
+automated endpoint and queue tests mock external services and do not require
+live credentials.
+
+**Public assistant:** a floating widget is available across public pages, with
+a full-page `/assistant` route. Gemini can invoke only static tools for the
+public service catalog, inquiry checklist, and fictional portfolio concepts;
+it cannot query client or studio records or take external actions. Questions
+are rate-limited and sent through a retryable Upstash Workflow. The latest question/answer pair is stored in `customer_support_messages` for
+later FAQ curation without separate account/IP metadata. Submitted text is
+stored as-is and is not automatically scrubbed. Redis holds only the polling
+result for ten minutes. The browser keeps a bounded conversation context for
+the current session; it is not stored as a transcript.
+
 The Team page shows the active team directory and RLS-filtered project channels.
 Admins assign project managers; admins and project managers can add/remove
 project members and assign supported project roles. Project messages are stored
 in PostgreSQL and the page loads up to the latest 100 messages per visible
-channel. Project completion requires its PM, archives the channel against new
-messages, and retains history only for current members. Project channels are
-ranked by priority descending, then nearest deadline via
-`list_project_channels()`. Availability editing, general/announcement chat,
-message pagination, and channel-message realtime updates are not implemented.
-See [DATABASE.md](./DATABASE.md) and [PLAN.md](./PLAN.md).
+channel. Project completion requires its PM and archives the channel against
+new messages. Project membership controls designer access; studio members have
+an explicit broader channel access policy. Project channels are ranked by
+priority descending, then nearest deadline via `list_project_channels()`.
+Availability editing, general/announcement chat, and message pagination are
+not implemented. Channel messages stream over Supabase Realtime. Online and
+typing indicators use project-member-scoped Redis keys with short TTLs; they
+are ephemeral and do not replace Postgres messages. See
+[DATABASE.md](./DATABASE.md) and [DEMO.md](./DEMO.md).
+
+**Slack synchronization:** workspace installation and designer account linking
+use verified OAuth. The Postgres outbox creates private project channels,
+reconciles membership for linked active project members, and delivers app
+messages. Verified Slack message events are deduplicated and stored in
+Postgres. Upstash Redis is used for message rate limits and ephemeral
+project-scoped presence, not durable chat storage. The standard Slack channel
+API does not mirror Kiln's role-based moderator permissions; database
+authorization remains authoritative.
 
 Project channel descriptions are generated from the related inquiry and brief
 and refreshed if inquiry/brief details change. System audit events record the
@@ -161,7 +223,9 @@ The System channel is event-only and is not a chat composer.
 
 **Finance:** normalized revenue, payout, expense, recurring-expense, and
 quarterly-report tables plus database totals/publishing functions are present.
-Finance APIs, entry forms, and report screens are not implemented. Legacy
+The admin finance page is a read-only overview of latest report totals and
+recent transaction rows; finance APIs, entry forms, and report-generation
+screens are not implemented. Legacy
 `project_request_logs` and `company_expenses` remain for later reviewed data
 reconciliation and should not receive new finance records.
 

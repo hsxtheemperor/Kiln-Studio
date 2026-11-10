@@ -40,6 +40,7 @@ export function AdminFrame({ children }: { children: ReactNode }) {
           <Link href="/admin">Dashboard</Link>
           <Link href="/admin/team">Team</Link>
           <Link href="/admin/inquiries">Inquiries</Link>
+          <Link href="/admin/finance">Finance</Link>
           <button
             className="text-button"
             type="button"

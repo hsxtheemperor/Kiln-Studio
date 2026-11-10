@@ -1,104 +1,106 @@
-# Production direction: durable team collaboration and Slack integration
+# Production boundaries and deferred roadmap
 
-The Team workspace now uses durable project membership and message storage for
-project channels. Slack can be added as an external collaboration surface
-without making Slack the source of truth for project permissions.
+Kiln Studio is built as a CV/demo project, not as a production design agency
+platform. The public portfolio and business records are fictional. Use
+synthetic data, and do not enter sensitive information. A successful local
+build or test run does not mean external providers or a hosted deployment have
+been fully verified.
 
-## Recommended source of truth
+## Current architecture decisions
 
-- Kiln Studio's database owns inquiries, projects, assignments, canonical roles,
-  channel membership, message references, and workflow status.
-- The application enforces access through trusted server-side identity checks,
-  database RLS, and audited service operations.
-- Slack is an optional transport/collaboration surface synchronized through a
-  controlled integration.
+- **Supabase PostgreSQL is the source of truth** for inquiries, projects,
+  membership, project messages, Slack mappings/outbox, and audit records.
+- **Auth and database policy:** Supabase Auth sessions, trusted
+  `app_metadata` access levels, server-side authorization, grants, and RLS.
+- **Realtime:** Supabase Realtime broadcasts durable project messages and
+  studio-only audit events. Redis is not durable message storage.
+- **Upstash Redis:** shared rate limiting, short-lived assistant polling
+  results, and ephemeral project online/typing state.
+- **Async processing:** QStash verifies private inquiry-reference uploads;
+  Upstash Workflow runs retryable similarity and assistant jobs.
+- **Similarity:** client-controlled opt-in, approved brief text, OpenAI
+  embeddings, and Upstash Vector neighbor lookup. Results are advisory and
+  reviewed by a person; no model changes priority, price, or acceptance.
+- **Assistant:** Gemini answers only questions about public studio/demo
+  information through a bounded allowlist of static tools. It has no access to
+  private studio/client records and cannot perform external actions. Q&A text is
+  saved for manual FAQ curation without separate account/IP metadata, but the
+  text itself is stored as submitted and is not automatically scrubbed.
+- **Slack:** optional two-way synchronization layered over the app's durable
+  project messaging. Kiln's database remains authoritative for access, roles,
+  and history.
 
-New projects have project-scoped memberships and dedicated channels. The Team
-workspace reads project membership and channel history from Supabase; the
-authenticated API writes messages and adds/removes members, while RLS remains
-the final authorization boundary. Project manager assignment remains separate
-from project-team roles.
+## Known feature limits
 
-## Staged approach
+- Finance has a protected read-only overview, but no transaction entry,
+  reconciliation, or report-publishing UI.
+- The project channel view loads the latest 100 messages; message pagination is
+  not implemented.
+- Availability self-service, general/announcement chat composition, and
+  channel message edit/delete/thread synchronization are not implemented.
+- There is no FAQ curation interface, automatic FAQ training, or assistant
+  transcript history. The assistant does not scrub personal information from
+  submitted question text.
+- Inquiry similarity has no trained predictive model and must not be presented
+  as one.
+- Slack historical import/backfill is not implemented. Slack roles do not
+  provide equivalent app-side project permissions.
+- Upstash Box and the Lead-Generator repository workflow are deferred. No
+  autonomous agent is enabled to modify studio records.
+- No complete browser end-to-end suite currently covers provider/workspace
+  behavior.
 
-### Stage 1: Make the in-app workflow real
+## Deployment checklist
 
-The project-channel foundation is implemented:
+1. Apply reviewed migrations from `supabase/migrations/` to the intended
+   Supabase environment. The latest support-message table is migration
+   `20261111000000_add_customer_support_messages.sql`. Use a development
+   project for migration rehearsal; never run destructive local reset
+   commands against a hosted project.
+2. Provision test accounts through a trusted Supabase admin mechanism and set
+   the required `app_metadata.access_level`; there is no public studio
+   registration.
+3. Configure only the provider credentials for features being deployed. Use
+   `.env.example` for variable names and keep actual values in the hosting
+   provider's secret store. Never copy secrets into docs, issues, or client
+   bundles. Do not treat `.env.production` as a public reference.
+4. For the assistant, configure `GOOGLEAI_API`, Upstash Redis, QStash token and
+   signing keys, and the canonical `NEXT_PUBLIC_SITE_URL`. Confirm provider
+   model availability, quota, and current usage terms; free-tier availability
+   is not guaranteed.
+5. For inquiry similarity, configure the OpenAI embedding key and Upstash
+   Vector endpoint. Verify explicit consent, deletion/revocation behavior, and
+   that only approved brief fields leave the application.
+6. For Slack, configure OAuth callback, Events API URL, event subscriptions,
+   encryption/signing secrets, and the scheduled `/api/slack/sync` worker.
+   Verify only in a dedicated test workspace with synthetic records; see
+   [SLACK.md](./SLACK.md).
+7. Configure and monitor the protected demo-retention schedule. Do not assume
+   the 14-day cleanup is active merely because its route exists.
+8. Run `pnpm test`, `pnpm typecheck`, `pnpm build`, and the local Supabase
+   migration/schema/pgTAP checks in CI. Validate provider setup and authorization
+   in an explicitly designated test environment.
 
-1. Introduce or confirm a first-class `projects` entity and its inquiry lifecycle.
-2. Keep project manager assignment separate from project-team roles; synchronize
-   project memberships with channel membership in the database.
-3. Enforce PM/admin membership editing and membership-based message-history
-   access in PostgreSQL RLS, with authenticated server routes for writes.
-4. Connect project team views, channel membership, and persistent project
-   messages to the database.
-5. Test project-channel access, role assignment, sender identity, and history
-   revocation.
+## Deferred work
 
-Availability management and general/announcement chat are not part of this
-project-channel foundation. The current message view loads the latest 100
-messages per visible project channel; pagination and realtime updates remain
-future work.
+- **FAQ curation:** create a studio-only review/export workflow before using
+  stored Q&A as approved public FAQ content or training material.
+- **Assistant privacy improvements:** decide on retention, deletion, and
+  optional PII detection/redaction before accepting real visitor text.
+- **Inquiry notifications:** define a destination and failure policy; inquiry
+  persistence must not depend on notification-provider availability.
+- **Finance operations:** define accounting, audit, and correction rules before
+  adding write APIs or entry screens.
+- **Slack recovery:** specify permission, deletion, and rate-limit behavior
+  before implementing historical import or message synchronization beyond
+  current new-message flows.
+- **Box/Lead-Generator:** the idea is parked until the separate repository has
+  working lead acquisition code and a clear, permitted source policy. Box does
+  not itself supply lead data.
+- **Autonomous actions:** any future agent that changes records needs narrow
+  permissions, an explicit approval point, and tested rollback/failure
+  handling.
 
-### Stage 2: Integrate Slack
-
-- Create a Slack app with only the required scopes and an explicit workspace
-  installation process.
-- Map Kiln Studio users to Slack user IDs using verified OAuth identity; do not
-  assume matching email alone is sufficient.
-- Create or map a Slack channel per eligible project and store its workspace and
-  channel IDs in the database.
-- Send app messages to Slack through a server-side integration worker.
-- Receive Slack events through a public webhook endpoint that verifies Slack's
-  request signature and timestamp before processing.
-- Persist an idempotency key/event ID and provider message ID to deduplicate
-  retries and prevent sync loops.
-- Track delivery/sync state and retries; surface failed syncs instead of
-  silently losing messages.
-- Keep provider credentials in server-side secret storage.
-
-## Two-way message flow
-
-```text
-Kiln Studio composer → authorized app API → database/outbox → Slack API
-Slack event webhook → signature verification → dedupe → database → app UI
-```
-
-Treat sync as an asynchronous, retryable pipeline. Do not make a client-facing
-inquiry submission depend on Slack availability. Preserve authorship, timestamps,
-thread relationships, edit/delete semantics, and failure status deliberately.
-
-## Identity, channels, and permissions
-
-- OAuth should establish a verified app-user-to-Slack-user mapping.
-- SCIM is optional and depends on Slack plan/admin approval; it is not required
-  merely to attribute messages.
-- Keep app roles and project permissions authoritative in Kiln Studio.
-- A Slack channel does not itself grant app access. Before displaying messages
-  in the website, check current project membership.
-- On membership removal, revoke app access immediately and define the desired
-  Slack channel removal/archive behavior.
-- General and announcement channels should be managed explicitly and have
-  permissions consistent with the in-app rules.
-- Audit project manager changes, membership changes, token installation, and
-  message synchronization events.
-- Preserve `system_activity_logs` as the audit source of truth; project and
-  Slack message events should link to projects and must not expose private
-  inquiry/profile values through the global System feed.
-
-## Operational and security requirements
-
-- Verify Slack signatures using the raw request body and protect against replay.
-- Request the smallest feasible OAuth scopes and document why each is needed.
-- Encrypt provider tokens at rest and rotate/revoke them on uninstall.
-- Implement durable event deduplication, retries, backoff, dead-letter handling,
-  and reconciliation for missed events.
-- Avoid logging message contents or credentials unless an explicit retention
-  policy requires it.
-- Test unauthorized users, project-to-channel mapping errors, Slack outages,
-  duplicate events, revoked tokens, and webhook retries.
-- Obtain workspace owner/admin approval and satisfy Slack's review requirements
-  before broad distribution.
-
-Slack API, OAuth/SCIM provisioning, webhook ingestion, and bidirectional sync
-are future work; none is currently implemented.
+The canonical application/data map is in [ARCHITECTURE.md](./ARCHITECTURE.md)
+and [DATABASE.md](./DATABASE.md). For what a visitor or reviewer can currently
+exercise, see [DEMO.md](./DEMO.md).

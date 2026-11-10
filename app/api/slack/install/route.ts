@@ -19,7 +19,7 @@ export async function GET(request: Request) {
     const state = createSlackOAuthState("install", authorization.user.id);
     const slackUrl = new URL("https://slack.com/oauth/v2/authorize");
     slackUrl.searchParams.set("client_id", clientId);
-    slackUrl.searchParams.set("scope", "chat:write,groups:read,groups:write");
+    slackUrl.searchParams.set("scope", "chat:write,groups:history,groups:read,groups:write");
     slackUrl.searchParams.set("user_scope", "openid,profile,email");
     slackUrl.searchParams.set("redirect_uri", redirectUri);
     slackUrl.searchParams.set("state", state);

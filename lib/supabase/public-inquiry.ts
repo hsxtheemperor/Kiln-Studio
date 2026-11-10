@@ -1,30 +1,19 @@
 import "server-only";
 
-import { createClient } from "@supabase/supabase-js";
-import type { InquiryBriefInsert, InquiryInsert, Database } from "./database.types";
+import type { InquiryBriefInsert, InquiryInsert } from "./database.types";
+import { createSupabaseServiceClient } from "./service";
 
 export async function createPublicInquiry(
   inquiry: InquiryInsert & { client_id?: string | null; priority_score: number },
   brief: Omit<InquiryBriefInsert, "inquiry_id">,
+  referenceIds: string[] = [],
 ): Promise<{ id: string }> {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const supabase = createSupabaseServiceClient();
 
-  if (!url || !serviceRoleKey) {
-    throw new Error("Public inquiry persistence is not configured.");
-  }
-
-  const supabase = createClient<Database>(url, serviceRoleKey, {
-    auth: {
-      autoRefreshToken: false,
-      detectSessionInUrl: false,
-      persistSession: false,
-    },
-  });
-
-  const { data, error } = await supabase.rpc("create_public_inquiry_with_brief", {
+  const { data, error } = await supabase.rpc("create_public_inquiry_with_references", {
     p_inquiry: inquiry,
     p_brief: brief,
+    p_reference_ids: referenceIds,
   });
 
   if (error || !data) {

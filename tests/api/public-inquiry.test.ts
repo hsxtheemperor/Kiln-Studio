@@ -7,6 +7,8 @@ vi.mock("server-only", () => ({}));
 const mocks = vi.hoisted(() => ({
   checkInquiryRateLimit: vi.fn(),
   createPublicInquiry: vi.fn(),
+  queueInquiryReferenceProcessing: vi.fn(),
+  queueInquirySimilarityProcessing: vi.fn(),
 }));
 
 vi.mock("@/lib/rate-limit/inquiry", () => ({
@@ -14,6 +16,12 @@ vi.mock("@/lib/rate-limit/inquiry", () => ({
 }));
 vi.mock("@/lib/supabase/public-inquiry", () => ({
   createPublicInquiry: mocks.createPublicInquiry,
+}));
+vi.mock("@/lib/inquiries/reference-queue", () => ({
+  queueInquiryReferenceProcessing: mocks.queueInquiryReferenceProcessing,
+}));
+vi.mock("@/lib/inquiries/similarity-queue", () => ({
+  queueInquirySimilarityProcessing: mocks.queueInquirySimilarityProcessing,
 }));
 
 import { POST } from "../../app/api/inquiries/route";
@@ -37,6 +45,8 @@ describe("POST /api/inquiries", () => {
       reset: Date.now() + 60_000,
     });
     mocks.createPublicInquiry.mockResolvedValue({ id: "mock-inquiry-id" });
+    mocks.queueInquiryReferenceProcessing.mockResolvedValue({ pending: 0 });
+    mocks.queueInquirySimilarityProcessing.mockResolvedValue({ queued: true });
   });
 
   it("persists a validated submission before returning confirmation", async () => {
@@ -52,6 +62,8 @@ describe("POST /api/inquiries", () => {
     expect(response.status).toBe(201);
     expect(await response.json()).toEqual({
       message: "Your inquiry has been received.",
+      referenceFilesPending: false,
+      similarityPending: false,
     });
     expect(mocks.createPublicInquiry).toHaveBeenCalledWith({
       name: "Ada Lovelace",
@@ -62,6 +74,7 @@ describe("POST /api/inquiries", () => {
       budget_range: null,
       timeline: null,
       priority_score: 0,
+      similarity_opt_in: false,
     }, {
       design_goal: "",
       brand_message: "",
@@ -70,7 +83,29 @@ describe("POST /api/inquiries", () => {
       references: null,
       time_budget: null,
       design_complexity: null,
-    });
+    }, []);
+  });
+
+  it("queues similarity processing only after explicit client consent", async () => {
+    const response = await POST(
+      createRequest({
+        name: "Ada Lovelace",
+        email: "ada@example.com",
+        project_brief: "A new project identity",
+        similarity_opt_in: true,
+      }),
+    );
+
+    expect(response.status).toBe(201);
+    expect(await response.json()).toMatchObject({ similarityPending: true });
+    expect(mocks.createPublicInquiry).toHaveBeenCalledWith(
+      expect.objectContaining({ similarity_opt_in: true }),
+      expect.any(Object),
+      [],
+    );
+    expect(mocks.queueInquirySimilarityProcessing).toHaveBeenCalledWith(
+      "mock-inquiry-id",
+    );
   });
 
   it("rejects honeypot submissions without persisting them", async () => {

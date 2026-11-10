@@ -104,6 +104,22 @@ export async function GET(request: Request) {
         throw new Error("Slack OAuth did not return a complete workspace installation.");
       }
 
+      const { data: currentInstallation, error: currentInstallationError } = await service
+        .from("slack_installations")
+        .select("workspace_id")
+        .eq("id", true)
+        .maybeSingle();
+      if (currentInstallationError) {
+        throw new Error("The current Slack workspace could not be verified.");
+      }
+      if (currentInstallation && currentInstallation.workspace_id !== oauth.team.id) {
+        return callbackRedirect(
+          request,
+          "/admin/team",
+          "workspace_change_required",
+        );
+      }
+
       const { error: installationError } = await service
         .from("slack_installations")
         .upsert(
@@ -113,6 +129,7 @@ export async function GET(request: Request) {
             workspace_name: oauth.team.name,
             bot_user_id: oauth.bot_user_id,
             encrypted_bot_token: encryptSlackToken(oauth.access_token),
+            is_active: true,
             installed_by: authorization.user.id,
             updated_at: new Date().toISOString(),
           },
@@ -182,7 +199,7 @@ export async function GET(request: Request) {
             slack_user_id: slackUserId,
             linked_by: authorization.user.id,
           },
-          { onConflict: "team_member_id", ignoreDuplicates: true },
+          { onConflict: "team_member_id" },
         );
       if (mappingError) {
         throw new Error("The Slack account is already linked to another team profile.");
