@@ -787,6 +787,8 @@ operational tables by triggers, not by foreign keys.
 19. [`20261109010000_add_inquiry_reference_uploads.sql`](../supabase/migrations/20261109010000_add_inquiry_reference_uploads.sql): creates a private image bucket and server-only reference metadata; links uploads atomically to inquiries and queues verification.
 20. [`20261109020000_add_opt_in_inquiry_similarity.sql`](../supabase/migrations/20261109020000_add_opt_in_inquiry_similarity.sql): adds explicit consent, advisory match state, and human review fields while preserving atomic inquiry creation.
 21. [`20261111000000_add_customer_support_messages.sql`](../supabase/migrations/20261111000000_add_customer_support_messages.sql): creates a small, service-role-only table for idempotent public support question/answer pairs without separate account/IP metadata; submitted text is not scrubbed.
+22. [`20261111010000_allow_idempotent_support_message_upserts.sql`](../supabase/migrations/20261111010000_allow_idempotent_support_message_upserts.sql): grants the service role column-level `SELECT` on `request_id`, which PostgreSQL requires for the idempotent upsert conflict check, without granting reads of question or answer text.
+23. [`20261111020000_claim_slack_outbox_message.sql`](../supabase/migrations/20261111020000_claim_slack_outbox_message.sql): adds an atomic service-role-only claim function for one Slack outbox message, used by QStash-triggered delivery and safe against concurrent/repeated claims.
 
 Migrations 9 to 12 harden and refine migration 8; migrations 13 to 15 finalize
 inquiry priority, activity-feed access/Realtime, finance, and project-team
@@ -798,7 +800,9 @@ Migration 21 stores chatbot Q&A for later manual FAQ curation. It deliberately
 does not store account, client, email, or IP metadata; submitted question and
 answer text is stored as-is and is not automatically scrubbed. The UI warns
 visitors not to include personal or sensitive information. Public roles cannot
-read or write this table directly.
+read or write this table directly. Migration 22 grants `service_role` access to
+only the idempotency key for `ON CONFLICT` handling; question/answer reads
+remain ungranted.
 
 Do not treat edits made only in the Supabase dashboard as the source of truth.
 Test a fresh database and a database upgraded through the full migration chain.

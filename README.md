@@ -24,7 +24,7 @@ personal, confidential, payment, or otherwise sensitive information.
 | Slack sync | Optional OAuth workspace install and designer account linking; project-channel/member reconciliation; durable app-to-Slack delivery; verified, deduplicated inbound message storage. Supabase remains authoritative for access and history. |
 | AI support guide | Site-wide widget and `/assistant` page, powered by Gemini Flash with bounded public-information tools. No access to private studio/client records or external actions. |
 | Finance overview | Protected, read-only view of recent normalized finance records and the latest report. Transaction entry, reconciliation, and report publishing UI are not implemented. |
-| Operations | QStash reference verification, Upstash Workflow for retryable tasks, a single daily Vercel Cron that runs Slack sync and 14-day demo-data cleanup, RLS-protected audit records, CI tests, and Vercel Speed Insights. |
+| Operations | QStash reference verification and event-driven Slack delivery, Upstash Workflow for retryable tasks, one daily Vercel Cron as a Slack-outbox recovery sweep and 14-day demo-data cleanup, RLS-protected audit records, CI tests, and Vercel Speed Insights. |
 
 ### Technical specifications
 
@@ -144,8 +144,9 @@ sign-in operations cannot be verified.
 | `GET /api/slack/install`, `GET /api/slack/connect` | Studio member / designer | Starts verified Slack workspace installation or user linking. |
 | `GET /api/slack/callback` | Signed-in user | Completes the OAuth callback and stores encrypted tokens or verified identity mapping. |
 | `POST /api/slack/events` | Slack signature | Verifies Slack Events API requests, handles uninstall, and persists eligible messages. |
-| `POST /api/slack/sync` | Cron bearer secret | Processes project-channel, membership-reconciliation, and message-outbox jobs; called by the daily scheduler. |
-| `POST /api/projects/:id/messages` | Designer or studio member | Stores project messages in Supabase and enqueues Slack delivery. |
+| `POST /api/slack/deliver` | QStash signature | Atomically claims and delivers one app message from the durable Slack outbox; QStash retries failed deliveries. |
+| `POST /api/slack/sync` | Cron bearer secret | Processes project-channel, membership-reconciliation, and pending outbox jobs as a recovery sweep. |
+| `POST /api/projects/:id/messages` | Designer or studio member | Stores project messages in Supabase and publishes an ID-deduplicated Slack delivery job. |
 | `PATCH /api/projects/:id` | Project manager or studio member | Updates project manager, deadline, or lifecycle details as authorized. |
 | `POST`, `DELETE /api/projects/:id/members` | Project manager or studio member | Updates project membership/roles; triggers Slack membership reconciliation. |
 | `GET`, `POST`, `DELETE /api/projects/:id/presence` | Project member | Reads/writes short-lived online and typing state in Redis. |
@@ -156,13 +157,12 @@ Slack member mapping is required for workspace participation. Project manager
 and member roles remain authoritative in Kiln Studio; standard Slack channel
 membership does not provide equivalent per-project permissions.
 
-The Vercel configuration intentionally uses one once-daily cron because the
-Hobby plan does not allow the every-minute schedule required for frequent Slack
-outbox processing. On Hobby, Slack sync therefore runs with the daily
-maintenance task; website messages still persist and update through Supabase
-Realtime immediately, but Slack delivery can be delayed. Upgrade the Vercel
-plan or use a separately secured external scheduler to run Slack sync more
-frequently.
+New app messages are published to QStash immediately after the durable
+Supabase write. QStash calls the signed delivery endpoint and retries failures;
+the daily Hobby-plan cron sweeps the outbox for work that was not queued or
+exhausted QStash retries. Supabase Realtime remains the immediate website
+delivery path. The cron is a recovery mechanism, not the normal Slack delivery
+latency.
 
 ## Verification
 

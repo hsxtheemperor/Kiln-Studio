@@ -1,10 +1,8 @@
 import { timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
-import type {
-  SlackMessageOutboxRow,
-  SlackProjectSyncJobRow,
-} from "@/lib/supabase/database.types";
+import type { SlackProjectSyncJobRow } from "@/lib/supabase/database.types";
 import { decryptSlackToken } from "@/lib/slack/crypto";
+import { processSlackOutboxMessage } from "@/lib/slack/outbox";
 import {
   callSlackApi,
   createSlackServiceClient,
@@ -15,10 +13,6 @@ export const maxDuration = 60;
 
 type SlackChannelResponse = {
   channel: { id: string; name: string };
-};
-
-type SlackMessageResponse = {
-  ts: string;
 };
 
 type SlackMembersResponse = {
@@ -101,88 +95,6 @@ async function updateSyncJob(
     .eq("status", "processing")
     .eq("attempt_count", job.attempt_count);
   if (updateError) throw new Error("Slack channel sync status could not be updated.");
-}
-
-async function updateOutbox(
-  service: ReturnType<typeof createSlackServiceClient>,
-  job: SlackMessageOutboxRow,
-  values: {
-    status: "delivered" | "retry" | "failed";
-    slack_message_ts?: string | null;
-    last_error?: string | null;
-    available_at?: string;
-  },
-) {
-  const { error } = await service
-    .from("slack_message_outbox")
-    .update({
-      ...values,
-      claimed_at: null,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", job.id)
-    .eq("status", "processing")
-    .eq("attempt_count", job.attempt_count);
-  if (error) throw new Error("Slack message delivery status could not be updated.");
-}
-
-async function deliverOutbox(
-  service: ReturnType<typeof createSlackServiceClient>,
-  token: string,
-  job: SlackMessageOutboxRow,
-) {
-  const [
-    { data: message, error: messageError },
-    { data: mapping, error: mappingError },
-    { data: project, error: projectError },
-  ] = await Promise.all([
-    service
-      .from("project_channel_messages")
-      .select("id, channel_id, sender_name, body, message_source")
-      .eq("id", job.project_channel_message_id)
-      .maybeSingle(),
-    service
-      .from("slack_project_channels")
-      .select("slack_channel_id")
-      .eq("project_id", job.project_id)
-      .maybeSingle(),
-    service
-      .from("projects")
-      .select("status")
-      .eq("id", job.project_id)
-      .maybeSingle(),
-  ]);
-  if (messageError || mappingError || projectError) {
-    throw new Error("Slack delivery data could not be loaded.");
-  }
-  if (!message || message.message_source !== "app" || !mapping) {
-    await updateOutbox(service, job, {
-      status: "failed",
-      last_error: "Message or Slack channel mapping is no longer available.",
-    });
-    return "failed";
-  }
-  if (project?.status !== "active") {
-    await updateOutbox(service, job, {
-      status: "failed",
-      last_error: "Project is completed; pending messages were not sent.",
-    });
-    return "failed";
-  }
-
-  const response = await callSlackApi<SlackMessageResponse>(token, "chat.postMessage", {
-    channel: mapping.slack_channel_id,
-    text: `*${message.sender_name}*\n${message.body}`,
-    client_msg_id: message.id,
-    unfurl_links: false,
-    unfurl_media: false,
-  });
-  await updateOutbox(service, job, {
-    status: "delivered",
-    slack_message_ts: response.ts,
-    last_error: null,
-  });
-  return "delivered";
 }
 
 async function reconcileSlackMembers(
@@ -367,26 +279,6 @@ async function processProjectSync(
   }
 }
 
-async function processOutbox(
-  service: ReturnType<typeof createSlackServiceClient>,
-  token: string,
-  job: SlackMessageOutboxRow,
-) {
-  try {
-    return await deliverOutbox(service, token, job);
-  } catch (error) {
-    const failed = job.attempt_count >= 8;
-    await updateOutbox(service, job, {
-      status: failed ? "failed" : "retry",
-      available_at: new Date(
-        Date.now() + retryDelaySeconds(job.attempt_count) * 1000,
-      ).toISOString(),
-      last_error: safeSlackError(error),
-    });
-    return failed ? "failed" : "retry";
-  }
-}
-
 export async function POST(request: Request) {
   if (!isAuthorized(request)) {
     return NextResponse.json(
@@ -432,8 +324,8 @@ export async function POST(request: Request) {
     );
     if (outboxError) throw new Error("Slack message jobs could not be claimed.");
 
-    for (const job of (outboxJobs ?? []) as SlackMessageOutboxRow[]) {
-      const result = await processOutbox(service, token, job);
+    for (const job of outboxJobs ?? []) {
+      const result = await processSlackOutboxMessage(service, token, job);
       if (result === "delivered") counts.delivered += 1;
       else counts[result] += 1;
     }

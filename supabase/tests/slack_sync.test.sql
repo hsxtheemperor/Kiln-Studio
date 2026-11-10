@@ -1,6 +1,6 @@
 BEGIN;
 
-SELECT plan(10);
+SELECT plan(12);
 
 SELECT set_config(
   'request.jwt.claims',
@@ -165,7 +165,43 @@ SELECT is(
   'ignored Slack messages are not visible in project history'
 );
 
+WITH inserted_message AS (
+  INSERT INTO public.project_channel_messages (
+    channel_id, sender_member_id, sender_name, sender_role, body
+  )
+  SELECT channels.id, '21000000-0000-0000-0000-000000000002',
+         'Slack Designer', 'DESIGNER', 'Event-driven Slack delivery'
+  FROM public.project_channels AS channels
+  JOIN public.projects ON projects.id = channels.project_id
+  WHERE projects.inquiry_id = '31000000-0000-0000-0000-000000000001'
+  RETURNING id
+)
+SELECT set_config('test.slack_message_id', id::text, true)
+FROM inserted_message;
+
 SET LOCAL ROLE service_role;
+
+SELECT is(
+  (
+    SELECT count(*)
+    FROM public.claim_slack_message_outbox_by_message_id(
+      current_setting('test.slack_message_id')::uuid
+    )
+  ),
+  1::bigint,
+  'event delivery claims only the outbox row for the requested message'
+);
+
+SELECT is(
+  (
+    SELECT count(*)
+    FROM public.claim_slack_message_outbox_by_message_id(
+      current_setting('test.slack_message_id')::uuid
+    )
+  ),
+  0::bigint,
+  'a duplicate event cannot claim an already-processing outbox row'
+);
 
 SELECT ok(
   (SELECT count(*) FROM public.claim_slack_message_outbox(10)) > 0,

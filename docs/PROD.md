@@ -27,8 +27,9 @@ been fully verified.
   saved for manual FAQ curation without separate account/IP metadata, but the
   text itself is stored as submitted and is not automatically scrubbed.
 - **Slack:** optional two-way synchronization layered over the app's durable
-  project messaging. Kiln's database remains authoritative for access, roles,
-  and history.
+  project messaging. App messages trigger signed QStash delivery jobs; one
+  daily Vercel Hobby cron is only an outbox recovery sweep. Kiln's database
+  remains authoritative for access, roles, and history.
 
 ## Known feature limits
 
@@ -53,10 +54,10 @@ been fully verified.
 ## Deployment checklist
 
 1. Apply reviewed migrations from `supabase/migrations/` to the intended
-   Supabase environment. The latest support-message table is migration
-   `20261111000000_add_customer_support_messages.sql`. Use a development
-   project for migration rehearsal; never run destructive local reset
-   commands against a hosted project.
+   Supabase environment. Support-message storage and its narrow upsert
+   permission are migrations `20261111000000` and `20261111010000`. Use a
+   development project for migration rehearsal; never run destructive local
+   reset commands against a hosted project.
 2. Provision test accounts through a trusted Supabase admin mechanism and set
    the required `app_metadata.access_level`; there is no public studio
    registration.
@@ -71,12 +72,11 @@ been fully verified.
 5. For inquiry similarity, configure the OpenAI embedding key and Upstash
    Vector endpoint. Verify explicit consent, deletion/revocation behavior, and
    that only approved brief fields leave the application.
-6. Configure and monitor the single daily Vercel Cron at `/api/cron/daily`.
-   It runs Slack sync and then the 14-day demo-data cleanup. Vercel Hobby does
-   not support the previous every-minute Slack schedule, so delivery and
-   reconciliation may be delayed up to a day. Use a higher plan or a separately
-   secured external scheduler for more frequent Slack sync. Do not assume the
-   cleanup is active merely because its route exists.
+6. Configure QStash and monitor the single daily Vercel Cron at
+   `/api/cron/daily`. QStash handles event-driven outbound Slack message
+   delivery and retries; the cron sweeps any remaining outbox work and runs
+   14-day demo-data cleanup. Do not assume the cleanup is active merely
+   because its route exists.
 7. For Slack, configure OAuth callback, Events API URL, event subscriptions,
    encryption/signing secrets, and test only in a dedicated workspace with
    synthetic records; see [SLACK.md](./SLACK.md).

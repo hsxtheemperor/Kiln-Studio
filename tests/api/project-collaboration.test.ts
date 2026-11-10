@@ -6,6 +6,7 @@ import { NextResponse } from "next/server";
 const mocks = vi.hoisted(() => ({
   requireDesigner: vi.fn(),
   checkProjectMessageRateLimit: vi.fn(),
+  queueSlackMessageDelivery: vi.fn(),
 }));
 
 vi.mock("@/lib/auth/require-designer", () => ({
@@ -13,6 +14,9 @@ vi.mock("@/lib/auth/require-designer", () => ({
 }));
 vi.mock("@/lib/rate-limit/project-messages", () => ({
   checkProjectMessageRateLimit: mocks.checkProjectMessageRateLimit,
+}));
+vi.mock("@/lib/slack/outbox-queue", () => ({
+  queueSlackMessageDelivery: mocks.queueSlackMessageDelivery,
 }));
 
 import {
@@ -53,6 +57,7 @@ describe("Project collaboration endpoints", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     supabase.from.mockReset();
+    mocks.queueSlackMessageDelivery.mockResolvedValue({ queued: true });
     mocks.checkProjectMessageRateLimit.mockResolvedValue({
       success: true,
       limit: 30,
@@ -124,6 +129,46 @@ describe("Project collaboration endpoints", () => {
       sender_role: "DESIGN_LEAD",
       body: "Share the revised direction.",
     });
+    expect(mocks.queueSlackMessageDelivery).toHaveBeenCalledWith(savedMessage.id);
+  });
+
+  it("keeps a persisted message successful when QStash is unavailable for retryable delivery", async () => {
+    mocks.queueSlackMessageDelivery.mockRejectedValue(new Error("QStash unavailable"));
+    const project = query({ data: { id: projectId, status: "active" }, error: null });
+    const channel = query({
+      data: { id: channelId, project_id: projectId, channel_type: "project", is_archived: false },
+      error: null,
+    });
+    const sender = query({ data: { id: teamMemberId, full_name: "Studio Member" }, error: null });
+    const membership = query({ data: { role_name: "DESIGN_LEAD" }, error: null });
+    const savedMessage = {
+      id: "message-pending",
+      channel_id: channelId,
+      sender_member_id: teamMemberId,
+      sender_name: "Studio Member",
+      sender_role: "DESIGN_LEAD",
+      body: "Keep the durable write even if the queue is down.",
+      created_at: "2026-11-08T12:00:00.000Z",
+    };
+    const insert = query({ data: savedMessage, error: null }, "single");
+    supabase.from
+      .mockReturnValueOnce(project.builder)
+      .mockReturnValueOnce(channel.builder)
+      .mockReturnValueOnce(sender.builder)
+      .mockReturnValueOnce(membership.builder)
+      .mockReturnValueOnce(insert.builder);
+
+    const response = await sendProjectMessage(
+      new Request(`https://kiln-studio.test/api/projects/${projectId}/messages`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ channel_id: channelId, body: savedMessage.body }),
+      }),
+      { params: Promise.resolve({ id: projectId }) },
+    );
+
+    expect(response.status).toBe(201);
+    expect(await response.json()).toEqual({ message: savedMessage });
   });
 
   it("rejects messages when the Upstash rate limit is exceeded", async () => {
