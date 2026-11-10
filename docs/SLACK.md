@@ -1,23 +1,53 @@
-# Slack integration notes
+# Slack integration
 
-This document is intentionally brief. The authoritative product direction lives in
-[PROD.md](./PROD.md). This file exists only as a pointer for the repo history
-and to keep the Slack-related work discoverable without duplicating the main
-technical plan.
+Kiln Studio's Slack integration is an optional collaboration transport. The
+application database remains authoritative for project membership, roles,
+message history, and lifecycle. Slack channel membership does not grant access
+to Kiln Studio or reproduce its project-role permissions.
 
-## Current position
+## Implemented flow
 
-- Kiln Studio keeps project access, membership, and message history in the app
-  database as the system of record.
-- Slack remains an optional synchronization surface, not the authority for roles,
-  access, or project lifecycle.
-- OAuth, webhook verification, event deduplication, and project-to-channel
-  mapping are implemented as a foundation layer, but deployment still requires
-  real workspace credentials and a reviewed operational setup.
+- A studio member installs the Slack workspace through OAuth; a designer can
+  link their Slack account to their Kiln team identity.
+- The app stores the workspace bot token encrypted and records verified user
+  mappings.
+- A durable database job creates/maps project channels and reconciles channel
+  members for active, linked project members.
+- App-originated project messages are persisted to Supabase first, then
+  delivered asynchronously through the message outbox.
+- Slack Events API requests are signature-verified. Eligible inbound messages
+  are workspace-checked, mapped to an active project member, deduplicated, and
+  persisted to Supabase.
+- Slack uninstall and project membership changes queue reconciliation work.
+- The authenticated sync worker processes pending channel and message jobs;
+  project-channel messages in the app are delivered with Supabase Realtime.
 
-## Source of truth
+```text
+Kiln Studio message → Supabase message/outbox → Slack API
+Slack event → signature + workspace/member checks → Supabase → app Realtime
+```
 
-Use [PROD.md](./PROD.md) for the production-facing design decisions and rollout
-notes. If a future deployment adds a Slack workspace, keep the database-backed
-model authoritative and do not rely on Slack-side history, permissions, or
-channel membership as the canonical record.
+## Roles and history
+
+Project managers, team roles, and app permissions remain in Kiln Studio.
+Slack's standard channel APIs do not expose the same per-project moderator
+model. Keep all sensitive reads and writes behind app authorization and
+database RLS. Project messages remain in Supabase; Slack is not the historical
+source of truth.
+
+New messages are synchronized. Historical Slack backfill, thread relationships,
+and message edit/delete synchronization are not implemented. Slack event
+subscriptions also depend on app configuration and workspace approval.
+
+## Deployment prerequisites
+
+Before testing a workspace, configure the Slack credentials and secrets listed
+in `.env.example`, apply the reviewed database migrations, register the exact
+OAuth callback URL, configure the Events API request URL, and enable the event
+subscriptions/scopes used by the app. Configure the deployed scheduler to
+invoke `/api/slack/sync` and monitor failed sync/outbox jobs.
+
+Use only a workspace intended for testing and synthetic projects/messages.
+Do not post exploratory messages or create channels in an unrelated workspace.
+See [PROD.md](./PROD.md) for deployment boundaries and [DATABASE.md](./DATABASE.md)
+for the schema, grants, and RLS model.

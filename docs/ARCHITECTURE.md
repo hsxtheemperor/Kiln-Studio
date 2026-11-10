@@ -22,7 +22,7 @@ Public browser
        ├─ Redis rate limit → retryable Upstash Workflow
        ├─ Gemini Flash function-calling loop over static public-information tools
        ├─ short-lived Redis result for browser polling
-       └─ idempotent question/answer persistence in Supabase; no user identity
+       └─ idempotent question/answer persistence in Supabase; no separate account/IP metadata
 
 Studio browser
   ├─ Admin sign-in → studio_member app_metadata
@@ -179,24 +179,25 @@ live credentials.
 a full-page `/assistant` route. Gemini can invoke only static tools for the
 public service catalog, inquiry checklist, and fictional portfolio concepts;
 it cannot query client or studio records or take external actions. Questions
-are rate-limited and sent through a retryable Upstash Workflow. The latest
-question/answer pair is stored in `customer_support_messages` without a user
-ID, email, or IP, for later FAQ curation. Redis holds only the polling result
-for ten minutes. The browser keeps a bounded conversation context for the
-current session; it is not stored as a transcript.
+are rate-limited and sent through a retryable Upstash Workflow. The latest question/answer pair is stored in `customer_support_messages` for
+later FAQ curation without separate account/IP metadata. Submitted text is
+stored as-is and is not automatically scrubbed. Redis holds only the polling
+result for ten minutes. The browser keeps a bounded conversation context for
+the current session; it is not stored as a transcript.
 
 The Team page shows the active team directory and RLS-filtered project channels.
 Admins assign project managers; admins and project managers can add/remove
 project members and assign supported project roles. Project messages are stored
 in PostgreSQL and the page loads up to the latest 100 messages per visible
-channel. Project completion requires its PM, archives the channel against new
-messages, and retains history only for current members. Project channels are
-ranked by priority descending, then nearest deadline via
-`list_project_channels()`. Availability editing, general/announcement chat,
-and message pagination are not implemented. Channel messages stream over
-Supabase Realtime. Online and typing indicators use project-member-scoped Redis
-keys with short TTLs; they are ephemeral and do not replace Postgres messages.
-See [DATABASE.md](./DATABASE.md) and [PLAN.md](./PLAN.md).
+channel. Project completion requires its PM and archives the channel against
+new messages. Project membership controls designer access; studio members have
+an explicit broader channel access policy. Project channels are ranked by
+priority descending, then nearest deadline via `list_project_channels()`.
+Availability editing, general/announcement chat, and message pagination are
+not implemented. Channel messages stream over Supabase Realtime. Online and
+typing indicators use project-member-scoped Redis keys with short TTLs; they
+are ephemeral and do not replace Postgres messages. See
+[DATABASE.md](./DATABASE.md) and [DEMO.md](./DEMO.md).
 
 **Slack synchronization:** workspace installation and designer account linking
 use verified OAuth. The Postgres outbox creates private project channels,

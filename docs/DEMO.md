@@ -1,106 +1,112 @@
 # Demo behavior and scope
 
-Kiln Studio is a fictional design-studio operations demo. Its public inquiry
-flow and selected account/admin/designer paths use Supabase, while some
-collaboration views are intentionally illustrative. This document distinguishes
-the connected features from the prototype UI.
+Kiln Studio is a fictional design-studio portfolio and operations demo. This
+guide describes the implemented user experience and identifies the boundaries
+that matter in a portfolio walkthrough. The public inquiry form is not a real
+lead channel. Use synthetic data only.
 
-## Public and client experience
+## Public visitor experience
 
-- Public landing, service, and fictional concept-work pages.
-- Inquiry form captures contact information, requested service, budget/timeline,
-  and design-brief fields such as goals, audience, references, complexity, and
-  outcomes.
-- The server validates and normalizes values, checks a honeypot, applies shared
-  rate limiting, computes priority, and atomically stores the inquiry and
-  extended brief.
-- New inquiries remain inquiries. When a studio admin sets an inquiry's status
-  to `Accepted`, the database creates one project record and one dedicated
-  project channel. The project record has a deadline date field and an
-  admin-assigned project manager.
-- Client account sign-up/sign-in and request list/detail views are present.
-- Sign-up allows no company or one company name; no multi-company sign-up
-  control is offered.
+- Browse the studio landing page, service catalog, and fictional concept work.
+- Submit an inquiry with service, goals, audience, desired outcomes, budget,
+  timing, and optional visual references.
+- Optionally create a client account to view inquiries associated with that
+  account.
+- Ask the site-wide Gemini assistant questions about public services, concept
+  work, or how the demo inquiry flow works.
 
-## Studio and designer experience
+Inquiry submissions are validated server-side, checked against a honeypot and
+shared rate limit, assigned a centralized priority score, then saved with their
+extended brief in one database operation. Optional reference files use private
+storage and server-side content verification. A successful confirmation is
+shown only after the inquiry is persisted.
 
-- Admin sign-in is private/provisioned, not public registration.
-- The admin dashboard shows inquiry counts, latest requests, priority context,
-  and a team overview.
-- Admin inquiry inbox supports status-filtered/paginated results, detail, and
-  status/priority updates.
-- Designer sign-in is separate. Designers can review the priority queue,
-  request details, and inquiry-linked project messages.
-- Admin and designer workspaces each include a separate **Team** route.
+The assistant has a bounded function-calling loop over static public
+information. It cannot access accounts, inquiries, project data, or team
+records, and cannot perform external actions. It saves question/answer text to
+Supabase for manual FAQ curation. The schema has no separate account/IP
+metadata, but submitted text is stored as-is and is not automatically
+scrubbed; visitors are told not to include personal or sensitive details.
 
-## Team workspace: prototype boundary
+## Studio and designer workflow
 
-The Team page currently renders sample team members, project assignments,
-availability, and sample chat messages from React component state. Sending a
-Team chat message updates only the current page state; it is not written to
-Supabase and does not synchronize between browsers. Project channels are live:
-the Team page lists them in database priority/deadline order, lets admins assign
-a PM and set a deadline, and lets the assigned PM set a deadline or complete
-the project. Projects get dedicated channels automatically, with inquiry
-details as the channel description.
+- Studio members sign in through provisioned accounts; there is no public
+  studio-member registration.
+- The studio dashboard summarizes inquiries and provides a live,
+  studio-restricted system-activity feed.
+- The inquiry inbox supports status filtering, pagination, and inquiry detail
+  review, including priority, private verified references, and optional
+  similarity recommendations.
+- Designers use a separate sign-in and priority queue, with inquiry details
+  and inquiry-linked messages.
+- A studio member accepting an inquiry creates a distinct project and its
+  dedicated project channel.
 
-The UI illustrates the intended workflow:
+## Project and team collaboration
 
-- availability options: `AVAILABLE`, `BUSY`, `AWAY`, `ON_LEAVE`;
-- example working roles and PM role;
-- General, Announcements, and project channel concepts;
-- member and assignment visibility.
+The admin and designer Team routes use authenticated Supabase data for active
+team members and project channels. Administrators assign project managers and
+deadlines. Project managers and administrators can manage project membership
+and roles within the database authorization rules. A project manager completes
+their project; completion archives the channel and prevents new messages.
 
-It does **not** currently implement live user-set availability, database-backed
-team roster, project membership editing, channel chat, announcement write
-permissions, or a System activity feed inside the Team page. The database
-enforces project membership access and allows current project members to read
-archived channel history; removed members lose access. The Team page must not be
-used to coordinate confidential real work.
+Project-channel messages persist in PostgreSQL and are delivered to connected
+clients through Supabase Realtime. The workspace loads up to the latest 100
+messages per visible channel. Redis stores short-lived online/typing indicators;
+these are ephemeral and are not a durable presence history.
 
-The admin dashboard includes a live System activity feed. It loads the newest
-25 audit events and receives new inserts through Supabase Realtime. RLS limits
-history and events to studio members; the feed displays operation/table/
-changed-column metadata only, never row values.
+Slack is an optional synchronized surface. The app database remains the source
+of truth for projects, app membership, roles, and messages. The worker creates
+and reconciles private project channels for mapped Slack users, delivers
+app-originated messages through a durable outbox, and ingests verified,
+deduplicated Slack events. Slack channel membership does not replace app
+authorization or provide equivalent project-role permissions.
 
-## Other modeled but not fully surfaced data
+## Similarity, finance, and audit
 
-- `inquiry_briefs` is persisted with each submitted inquiry. Priority is stored
-  on the inquiry; the brief keeps its scoring inputs.
-- `project_messages` has a designer API and request room; this is separate from
-  the local Team chat prototype.
-- `project_revenue`, `project_payouts`, `expenses`, `recurring_expenses`, and
-  quarterly report tables/functions model finance, but no finance API or UI is
-  implemented. Legacy `project_request_logs` and `company_expenses` remain for
-  later reconciliation and should not receive new finance records.
-- `system_activity_logs` records operational table changes and is readable by
-  studio members only. The System channel is an event feed, not a chat composer,
-  and the admin dashboard displays its recent events live.
-- The database-backed project channel list is live; roster, member editing, and
-  regular Team chat still use sample/local state.
+- Inquiry similarity is opt-in and advisory. Approved brief text is embedded;
+  Upstash Vector holds similarity vectors and inquiry references. Human review
+  is authoritative, and similarity does not automatically alter priority,
+  acceptance, or pricing.
+- The finance screen is a protected, read-only overview backed by normalized
+  finance/report tables. There is no transaction-entry, reconciliation, or
+  report-publishing UI.
+- System audit rows record operation, table, row identifier, changed columns,
+  actor, and timestamp—not before/after record values. Only studio members can
+  read them; the admin dashboard receives new audit events through Realtime.
+- The demo retention endpoint removes stale synthetic inquiries and abandoned
+  reference uploads after the configured 14-day window. Scheduled execution
+  must be configured and monitored in the deployment.
 
-## Demo setup and walkthrough
+## Walkthrough
 
-1. Configure Supabase and Upstash using `.env.example` as the variable-name
-   reference.
-2. Apply the full SQL migration chain to a development database.
-3. Provision test accounts through a trusted Supabase admin mechanism and set
-   the proper `app_metadata.access_level`; do not add passwords or privileged
-   keys to docs or source.
-4. Run `pnpm dev`, submit a synthetic inquiry, and verify it is persisted before
-   the confirmation page is shown.
-5. Sign in as a provisioned client to inspect owned requests, as a studio
-   member to review/update inquiry status, or as a designer to inspect the
-   priority queue and message room.
-6. Visit `/admin/team` or `/designer/team` to see the sample collaboration UI;
-   remember its chat and roster are not live backend data.
+1. Configure a development Supabase project and required provider credentials
+   using `.env.example` as the variable-name reference.
+2. Apply the repository migrations to a development database and provision
+   test accounts with trusted `app_metadata.access_level` values.
+3. Start the app with `pnpm dev` and submit a synthetic inquiry.
+4. Sign in as a client to view owned inquiries; as a studio member to review
+   and update an inquiry; or as a designer to inspect the queue and messaging.
+5. Accept a synthetic inquiry, then inspect its project, channel, membership,
+   Realtime messages, and PM-controlled completion.
+6. Exercise optional Slack, similarity, upload, and assistant flows only when
+   their providers are configured for the intended test environment.
 
-## Release cautions
+## Not included / not production-ready
 
-Do not present the fictional studio or sample project names as real client
-work. Do not publish actual inquiry data. The repo now includes a protected
-demo-retention cleanup route to remove inquiries older than 14 days from the
-active demo dataset. Keep the private cron secret out of version control and
-confirm the cleanup window before sharing the public form. See
-[DATABASE.md](./DATABASE.md) for schema and security boundaries and
-[PROD.md](./PROD.md) for the future integration path.
+- The fictional portfolio and inquiry form are not real client services.
+- No FAQ management interface, automatic FAQ extraction/training, or automatic
+  PII scrubbing is provided.
+- No autonomous agent can change studio records or make business decisions.
+- Finance entry and accounting reconciliation are not available in the UI.
+- Availability self-service, general/announcement chat composition, and channel
+  message pagination are not implemented.
+- Slack history import/backfill, full edit/delete/thread synchronization, and
+  per-project Slack moderator permissions are not implemented.
+- Upstash Box and the Lead-Generator repository workflow are deferred.
+- A successful local test/build does not verify external provider credentials,
+  Slack workspace behavior, deployment schedules, or hosted RLS configuration.
+
+See [ARCHITECTURE.md](./ARCHITECTURE.md) for the application map,
+[DATABASE.md](./DATABASE.md) for persistence and access policies, and
+[PROD.md](./PROD.md) for deployment prerequisites and deferred work.

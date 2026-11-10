@@ -1,70 +1,74 @@
 # Kiln Studio
 
-Kiln Studio is a fictional design-studio portfolio and operations demo built with
-Next.js, TypeScript, Supabase, and Upstash. It demonstrates public project
-inquiries, client request tracking, studio/designer workspaces, prioritization,
-and an early team collaboration interface. It is not a real studio; inquiries
-are synthetic/demo data and are not monitored as client leads.
+Kiln Studio is a fictional design-studio portfolio and operations demo built
+for a CV/project walkthrough. It demonstrates how a public inquiry can move
+through review, project setup, and team collaboration, with a customer-facing
+Gemini assistant and an optional Slack sync layer.
 
-## About
+**This is not a real design studio.** Portfolio work and inquiry data are
+synthetic. The public inquiry form is not monitored for real leads. Do not enter
+personal, confidential, payment, or otherwise sensitive information.
 
-Kiln Studio is a fictional design-studio portfolio and operations demo built to
-show a realistic inquiry-to-project workflow, live admin views, and a durable
-team collaboration foundation. The app is intentionally synthetic and designed to
-be easy to explain in a recruiter-facing walkthrough.
+## What this project demonstrates
 
-## Website features
+| Area | Implemented capability |
+| --- | --- |
+| Public portfolio | Responsive landing page, service catalog, fictional work, inquiry form, and optional design-reference images. |
+| Inquiry workflow | Server-validated intake, extended brief, honeypot and rate limits, atomic Supabase persistence, and centralized priority score. |
+| Similarity advisory | Explicit opt-in; approved brief text is embedded and matched with Upstash Vector. Similarity and reviewed complexity/hour context are advisory and do not change priority or accept work automatically. |
+| Client portal | Supabase Auth sign-up/sign-in and client-owned inquiry list/detail views. |
+| Studio workspace | Protected dashboard, status-filtered/paginated inquiry inbox, inquiry detail, status/priority updates, private reference previews, similarity review, and live audit feed. |
+| Designer workspace | Protected priority queue, inquiry detail, and inquiry-linked messages. |
+| Project lifecycle | Accepting an inquiry creates a project and dedicated channel. Admins manage the PM/deadline; the PM can complete a project. |
+| Team collaboration | Live team directory, project membership/roles, persistent project-channel messages with Supabase Realtime, and short-lived Redis presence/typing indicators. |
+| Slack sync | Optional OAuth workspace install and designer account linking; project-channel/member reconciliation; durable app-to-Slack delivery; verified, deduplicated inbound message storage. Supabase remains authoritative for access and history. |
+| AI support guide | Site-wide widget and `/assistant` page, powered by Gemini Flash with bounded public-information tools. No access to private studio/client records or external actions. |
+| Finance overview | Protected, read-only view of recent normalized finance records and the latest report. Transaction entry, reconciliation, and report publishing UI are not implemented. |
+| Operations | QStash reference verification, Upstash Workflow for retryable tasks, 14-day demo-data cleanup endpoint, RLS-protected audit records, CI tests, and Vercel Speed Insights. |
 
-- **Public portfolio:** responsive home, services, and fictional concept work.
-- **Customer-support chatbot:** site-wide helping-hand widget and full-page
-  assistant, powered by Gemini 3.8 Flash with Gemini 3.5 Flash-Lite fallback.
-  A bounded agent loop can retrieve only static public service, inquiry, and
-  portfolio information; it cannot access private studio or client data.
-  Upstash Rate Limits and Workflow protect and retry requests, Redis keeps
-  transient polling results for ten minutes, and Supabase stores each
-  question/answer pair for future FAQ curation without separate account or IP
-  metadata. Submitted text is not automatically scrubbed; visitors are warned
-  not to include personal or sensitive information. Google AI free-tier
-  availability and quotas depend on the account and current provider terms.
-- **Inquiry intake:** validated inquiry and extended design brief, honeypot
-  protection, shared Redis rate limiting, and atomic Supabase persistence.
-- **Reference uploads:** optional private JPEG/PNG/WebP references, signed
-  upload URLs, server-side content verification, and temporary admin previews.
-- **Opt-in similarity advisory:** client-controlled consent, approved brief
-  text embeddings, Upstash Vector matching, human complexity/hour review, and
-  no automatic priority changes.
-- **Client portal:** optional account sign-up/sign-in and client-owned inquiry
-  list/detail pages.
-- **Studio/admin workspace:** protected sign-in, inquiry inbox and detail,
-  status/priority updates, review notes, similarity recommendations, and a
-  dashboard with inquiry and live system-activity summaries.
-- **Designer workspace:** protected sign-in, priority queue, request details,
-  and inquiry-linked messages.
-- **Project lifecycle:** accepted inquiries create projects; studio admins
-  manage project managers and deadlines; project completion is PM-controlled.
-- **Project collaboration:** project-specific membership and roles, persistent
-  Supabase messages and Realtime delivery, membership-gated history, and
-  short-lived Redis online/typing indicators.
-- **Slack synchronization:** optional OAuth workspace install and designer
-  account linking, private project channels, member reconciliation, durable
-  outbound delivery, and verified inbound message persistence. Supabase remains
-  the source of truth; Slack roles do not replace app/database permissions.
-- **Background processing:** QStash reference verification and retryable
-  Upstash Workflow runs for opted-in similarity and chatbot answers.
-- **Finance overview:** protected, read-only view of recent revenue, payouts,
-  expenses, and the latest quarterly report from the existing normalized
-  schema. Transaction entry, reconciliation, and report publishing UI are not
-  implemented.
-- **Retention and audit:** protected scheduled cleanup for stale demo inquiries
-  and abandoned uploads; studio-only audit events omit record values.
-- **Security and CI:** Supabase Auth/RLS, server-side authorization, pgTAP
-  database tests, Vitest endpoint/unit tests, TypeScript checks, and production
-  build validation.
-- **Vercel Speed Insights** integration.
+### Technical specifications
 
-The site is a fictional demo. Do not submit sensitive information. See
-[docs/DEMO.md](./docs/DEMO.md), [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md),
-and [docs/PROD.md](./docs/PROD.md) for system boundaries and deployment gaps.
+- **Application:** Next.js 16 App Router, React 19, TypeScript 5.9, and Node.js Route Handlers.
+- **Identity and relational data:** Supabase Auth and PostgreSQL; cookie-bound
+  sessions, server-side authorization, and Row Level Security.
+- **Live updates:** Supabase Realtime for project-channel messages and studio
+  audit events. PostgreSQL is the durable message store.
+- **Ephemeral coordination:** Upstash Redis for rate limiting, polling results,
+  and short-lived project presence; it is not the chat-history database.
+- **Async work:** Upstash QStash for reference-image verification and Upstash
+  Workflow for retryable similarity and assistant processing.
+- **Semantic matching:** OpenAI embeddings and Upstash Vector for consented
+  inquiry similarity; human review remains authoritative.
+- **Support assistant:** Gemini 3.8 Flash with Gemini 3.5 Flash-Lite fallback,
+  static allowlisted tools, and
+  bounded history/agent steps. Q&A is stored in Supabase for manual FAQ
+  curation; question text is stored as submitted and is not automatically
+  scrubbed. The interface warns against submitting sensitive details.
+- **External collaboration:** Slack API with OAuth, encrypted installation
+  credentials, verified Events API requests, durable sync/outbox records, and
+  reconciliation jobs.
+- **Quality gates:** Vitest unit/API tests, TypeScript typecheck, production
+  build, Supabase migration/schema checks, and pgTAP tests in GitHub Actions.
+
+### Important demo boundaries
+
+- All portfolio examples and client/business records should be treated as
+  synthetic. No real client-service commitments or response SLAs are offered.
+- Similarity is a human-reviewed reference, not an ML-trained score or
+  automatic acceptance/pricing system.
+- Finance is read-only in the app; do not treat demo records as accounting data.
+- Slack behavior depends on an installed workspace and valid provider setup;
+  Slack does not implement Kiln's project-role authorization.
+- The assistant stores question/answer text for FAQ review, without separate
+  account/IP metadata. Submitted text is not PII-scrubbed automatically.
+- Upstash Box/Lead-Generator automation and autonomous studio-record actions
+  are deferred, not shipped features.
+
+For the detailed walkthrough and limitations, see
+[docs/DEMO.md](./docs/DEMO.md). Architecture and file responsibilities are in
+[docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md); database schema and RLS are in
+[docs/DATABASE.md](./docs/DATABASE.md); integration prerequisites and deferred
+work are in [docs/PROD.md](./docs/PROD.md) and [docs/SLACK.md](./docs/SLACK.md).
 
 ## Local development
 
@@ -91,11 +95,11 @@ background work, and enabled optional features.
    pnpm dev
    ```
 
-The site runs at `http://localhost:3000`. If Supabase is unreachable, protected
-data and sign-in operations cannot be verified; check the project URL, project
-availability, and local network before debugging credentials.
+The site runs at `http://localhost:3000`. Configure only the providers needed
+for the flows being tested. If Supabase is unreachable, protected data and
+sign-in operations cannot be verified.
 
-## Routes
+## Product routes
 
 | Route | Access | Purpose |
 | --- | --- | --- |
@@ -110,14 +114,14 @@ availability, and local network before debugging credentials.
 | `/admin` | Studio member | Inquiry and team overview. |
 | `/admin/inquiries` | Studio member | Inquiry inbox. |
 | `/admin/inquiries/:id` | Studio member | Inquiry details, priority/status, references, and similarity review. |
-| `/admin/team` | Studio member | Team and collaboration demo. |
+| `/admin/team` | Studio member | Team directory and project collaboration workspace. |
 | `/admin/finance` | Studio member | Read-only finance and latest quarterly report overview. |
 | `/designer/sign-in` | Public sign-in | Designer authentication. |
 | `/designer` | Designer or studio member | Priority queue and request links. |
 | `/designer/requests/:id` | Designer or studio member | Request details and project room. |
-| `/designer/team` | Designer or studio member | Team and collaboration demo. |
+| `/designer/team` | Designer or studio member | Team directory and project collaboration workspace. |
 
-## API
+## API surface
 
 | Method and path | Access | Purpose |
 | --- | --- | --- |
@@ -149,7 +153,7 @@ availability, and local network before debugging credentials.
 
 Slack member mapping is required for workspace participation. Project manager
 and member roles remain authoritative in Kiln Studio; standard Slack channel
-membership does not provide equivalent per-project moderator permissions.
+membership does not provide equivalent per-project permissions.
 
 ## Verification
 
@@ -159,8 +163,9 @@ pnpm test
 pnpm build
 ```
 
-Tests cover selected schemas, priority logic, and API/auth flows. Passing these
-tests does not replace an end-to-end browser test.
+The suite covers validation, auth/authorization behavior, queueing, workflows,
+database policies, and key API flows. It does not replace browser-level
+end-to-end testing against a configured environment.
 
 ## Continuous integration
 
@@ -180,5 +185,6 @@ This project is licensed under the [MIT License](./LICENSE).
 - [Architecture and file responsibilities](./docs/ARCHITECTURE.md)
 - [Database schema, migrations, and access boundaries](./docs/DATABASE.md)
 - [Current demo behavior and limitations](./docs/DEMO.md)
-- [Implementation status and follow-up checklist](./docs/PLAN.md)
-- [Future production and Slack integration direction](./docs/PROD.md)
+- [Current implementation status and next steps](./docs/PLAN.md)
+- [Slack integration notes](./docs/SLACK.md)
+- [Production boundaries and deferred roadmap](./docs/PROD.md)

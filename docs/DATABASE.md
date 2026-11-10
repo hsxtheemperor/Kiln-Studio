@@ -841,7 +841,7 @@ project identifiers into project docs that are intended for public review.
 | `slack_project_sync_jobs` | Durable channel create/archive/member-reconciliation work with retry state. |
 | `slack_message_outbox` | Durable app-to-Slack delivery work, with retry and provider timestamp tracking. |
 | `slack_event_receipts`, `slack_provider_messages` | Idempotency receipts and provider-message-to-app-message mapping for inbound Slack events. |
-| `customer_support_messages` | Idempotent public chatbot question/answer pairs and Gemini model name for future FAQ curation; contains no user/account/IP identity and is writable only by the server service role. |
+| `customer_support_messages` | Idempotent public chatbot question/answer pairs and Gemini model name for future FAQ curation; stores no separate account/IP metadata, does not scrub submitted text, and is writable only by the server service role. |
 | `project_revenue` | Project receipts and refund adjustments. |
 | `project_payouts` | Project member payouts, including planned-to-paid transitions and refund adjustments. |
 | `expenses` | One-time studio overhead expenses; rows are append-only except for a one-way void operation. |
@@ -1209,10 +1209,11 @@ project or to a studio admin. The Team UI loads live team members, memberships,
 and recent project messages; its authenticated routes write messages and add or
 remove members through RLS-protected sessions. Project messages show the latest
 100 rows per visible channel. The Team page also exposes admin PM assignment,
-deadline editing, and PM-only completion. The admin dashboard displays recent
-system activity and subscribes to new audit events. Finance has database
-tables, access policies, totals, and publishing functions, but no application
-UI or API workflow.
+deadline editing, project membership management, and PM-only completion. The
+admin dashboard displays recent system activity and subscribes to new audit
+events. Finance has database tables, access policies, totals, and publishing
+functions, plus a protected read-only overview page. There is no transaction
+entry, reconciliation, or report-publishing UI/API workflow.
 
 Known limitations, verified against the committed SQL:
 
@@ -1226,9 +1227,10 @@ Known limitations, verified against the committed SQL:
   `company_expenses` predate normalized finance. Their data has not been
   migrated or dropped; do not use them for new financial entries. Review their
   grants/policies separately before exposing them to real users.
-- **Finance is database-only.** New finance and report tables are restricted to
-  studio members, and designers cannot read them. No finance application
-  workflow currently consumes them.
+- **Finance operations are database-only.** New finance and report tables are
+  restricted to studio members, and designers cannot read them. The current
+  application only provides a read-only overview; no finance write workflow
+  consumes or manages these records.
 - **System activity is admin-only.** Designers cannot read
   `system_activity_logs`; rows expose changed column names, never values.
 - **Legacy role casing.** Legacy availability and channel-member role values
