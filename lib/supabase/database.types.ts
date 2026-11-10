@@ -597,6 +597,24 @@ export type Database = {
         Update: Partial<SystemActivityLogRow>;
         Relationships: [];
       };
+      customer_support_messages: {
+        Row: {
+          request_id: string;
+          question: string;
+          answer: string;
+          model: string;
+          created_at: string;
+        };
+        Insert: {
+          request_id: string;
+          question: string;
+          answer: string;
+          model: string;
+          created_at?: string;
+        };
+        Update: never;
+        Relationships: [];
+      };
       project_channels: {
         Row: ProjectChannelRow;
         Insert: {

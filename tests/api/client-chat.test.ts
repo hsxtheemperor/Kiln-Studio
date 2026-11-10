@@ -57,11 +57,46 @@ describe("/api/client-chat", () => {
     expect(mocks.queueClientChatAnswer).toHaveBeenCalledWith(
       payload.requestId,
       "What services do you offer?",
+      [],
+    );
+  });
+
+  it("passes bounded conversation context to the assistant", async () => {
+    const history = [
+      { role: "user", text: "What services do you offer?" },
+      { role: "model", text: "Brand, web, and product design." },
+    ];
+    const response = await POST(
+      createRequest({ message: "Which includes UX?", history }),
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(202);
+    expect(mocks.queueClientChatAnswer).toHaveBeenCalledWith(
+      payload.requestId,
+      "Which includes UX?",
+      history,
     );
   });
 
   it("rejects malformed or oversized questions before rate limiting", async () => {
     const response = await POST(createRequest({ message: "x".repeat(1001) }));
+
+    expect(response.status).toBe(400);
+    expect(mocks.checkClientChatRateLimit).not.toHaveBeenCalled();
+    expect(mocks.queueClientChatAnswer).not.toHaveBeenCalled();
+  });
+
+  it("rejects oversized conversation context before rate limiting", async () => {
+    const response = await POST(
+      createRequest({
+        message: "Hello",
+        history: Array.from({ length: 9 }, () => ({
+          role: "user",
+          text: "Earlier question",
+        })),
+      }),
+    );
 
     expect(response.status).toBe(400);
     expect(mocks.checkClientChatRateLimit).not.toHaveBeenCalled();

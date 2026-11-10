@@ -18,6 +18,11 @@ Public browser
   │         └─ computed priority on the inquiry
   └─ Client account
        └─ Supabase Auth cookie session → client profile / owned inquiries
+  └─ Site-wide support assistant
+       ├─ Redis rate limit → retryable Upstash Workflow
+       ├─ Gemini Flash function-calling loop over static public-information tools
+       ├─ short-lived Redis result for browser polling
+       └─ idempotent question/answer persistence in Supabase; no user identity
 
 Studio browser
   ├─ Admin sign-in → studio_member app_metadata
@@ -62,10 +67,11 @@ Next.js route groups organize layouts without adding URL prefixes.
 | `app/globals.css` | Shared public, admin, designer, and Team visual system. |
 | `app/(public)/page.tsx`, `services/page.tsx`, `work/page.tsx` | Public landing, service, and fictional concept-work pages. |
 | `app/(public)/inquiry/page.tsx` | Inquiry entry point and optional client prefill. |
-| `app/(public)/assistant/page.tsx` | Public studio-information assistant entry point. |
+| `app/(public)/assistant/page.tsx` | Full-page public customer-support assistant entry point. |
 | `components/inquiry/inquiry-form.tsx` | Client-side form UX; server validation remains authoritative. |
 | `components/inquiry/confirmation-gate.tsx` | Prevents direct access from appearing to confirm an unsaved request. |
-| `components/assistant/client-chat.tsx` | One-question-at-a-time public assistant UI with polling and explicit transient-processing disclosure. |
+| `components/assistant/client-chat.tsx` | Public assistant conversation UI with bounded context, Workflow polling, and question-storage disclosure. |
+| `components/assistant/support-chat-widget.tsx` | Site-wide floating assistant panel for public pages. |
 | `components/admin/inquiry-detail.tsx` | Shows inquiry details and secure, temporary previews of verified reference images. |
 | `app/(public)/account/` and `components/client/` | Client auth forms and request-list/detail views. |
 | `app/(admin)/admin/page.tsx` | Loads and renders the admin dashboard. |
@@ -100,7 +106,9 @@ Next.js route groups organize layouts without adding URL prefixes.
 | `lib/inquiries/schema.ts` | Inquiry options, validation, normalization, and database insert mapping. |
 | `lib/inquiries/reference-files.ts`, `reference-queue.ts` | Image constraints, content verification, and QStash delivery with local inline fallback. |
 | `lib/inquiries/similarity.ts`, `similarity-queue.ts` | Builds approved inquiry text, requests embeddings, stores/query vectors, and triggers consent-gated Workflow processing. |
-| `lib/assistant/client-chat.ts`, `client-chat-queue.ts` | Calls OpenAI with a public-only system prompt and stores transient results in Redis for ten minutes. |
+| `lib/assistant/client-chat.ts` | Calls Gemini 3.8 Flash (3.5 Flash-Lite fallback) with public-only context and a bounded allowlisted function-calling loop. |
+| `lib/assistant/client-chat-queue.ts` | Queues assistant work through Upstash Workflow and stores transient polling results in Redis for ten minutes. |
+| `lib/assistant/customer-support-messages.ts` | Persists idempotent Q&A pairs through the server-only Supabase service client without separate account/IP metadata; submitted text is not scrubbed. |
 | `lib/rate-limit/client-chat.ts` | Applies shared Redis rate limiting to public assistant requests. |
 | `lib/supabase/service.ts` | Server-only Supabase service-role client for narrowly scoped privileged work. |
 | `lib/project-priority.ts` | Priority score and label computation. |
@@ -133,7 +141,8 @@ Next.js route groups organize layouts without adding URL prefixes.
 | `supabase/migrations/20261108070000_restrict_membership_changes_to_active_projects.sql` | Prevents adding or changing project roles after completion while preserving membership removal for access revocation. |
 | `supabase/migrations/20261109010000_add_inquiry_reference_uploads.sql` | Adds a private image bucket, server-only attachment metadata, and atomic inquiry-linking RPC. |
 | `supabase/migrations/20261109020000_add_opt_in_inquiry_similarity.sql` | Adds inquiry similarity consent/review state and extends atomic inquiry creation. |
-| `supabase/tests/` | pgTAP coverage for inquiry priority/atomic writes, reference-file access and linking, project lifecycle and RLS, finance/report behavior, grants, team roles, and channel rules. |
+| `supabase/migrations/20261111000000_add_customer_support_messages.sql` | Adds a service-role-only table for customer-support Q&A curation without separate account/IP metadata; submitted text is not scrubbed. |
+| `supabase/tests/` | pgTAP coverage for inquiry priority/atomic writes, reference-file access and linking, project lifecycle and RLS, finance/report behavior, grants, team roles, channel rules, and support-message privacy/idempotency. |
 | `.github/workflows/ci.yml` | Runs application tests, QStash/Workflow-focused checks, typecheck/build, and clean local Supabase migration, lint, and pgTAP checks on pull requests and all pushes; no deployment. |
 | `lib/supabase/database.types.ts` | Application-side Supabase row/insert types. |
 | `tests/unit/`, `tests/lib/`, `tests/api/` | Focused validation, priority, upload/queue, similarity, and API/auth tests. |
@@ -166,11 +175,15 @@ Upstash Workflow SDK verifies workflow requests and handles durable steps;
 automated endpoint and queue tests mock external services and do not require
 live credentials.
 
-**Public assistant:** the `/assistant` page answers from public Kiln Studio
-information only and has no access to client or studio records. Questions are
-rate-limited, sent to OpenAI through a retryable Workflow, and response values
-are held in Redis for ten minutes only. This is not a durable conversation
-history.
+**Public assistant:** a floating widget is available across public pages, with
+a full-page `/assistant` route. Gemini can invoke only static tools for the
+public service catalog, inquiry checklist, and fictional portfolio concepts;
+it cannot query client or studio records or take external actions. Questions
+are rate-limited and sent through a retryable Upstash Workflow. The latest
+question/answer pair is stored in `customer_support_messages` without a user
+ID, email, or IP, for later FAQ curation. Redis holds only the polling result
+for ten minutes. The browser keeps a bounded conversation context for the
+current session; it is not stored as a transcript.
 
 The Team page shows the active team directory and RLS-filtered project channels.
 Admins assign project managers; admins and project managers can add/remove

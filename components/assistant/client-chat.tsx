@@ -13,7 +13,7 @@ function getErrorMessage(payload: unknown, fallback: string) {
     : fallback;
 }
 
-export function ClientChat() {
+export function ClientChat({ compact = false }: { compact?: boolean }) {
   const [message, setMessage] = useState("");
   const [messages, setMessages] = useState<Message[]>([]);
   const [busy, setBusy] = useState(false);
@@ -33,7 +33,13 @@ export function ClientChat() {
       const startResponse = await fetch("/api/client-chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: question }),
+        body: JSON.stringify({
+          message: question,
+          history: messages.slice(-8).map((entry) => ({
+            role: entry.role === "visitor" ? "user" : "model",
+            text: entry.text,
+          })),
+        }),
       });
       const startPayload: unknown = await startResponse.json();
       if (!startResponse.ok) {
@@ -90,15 +96,16 @@ export function ClientChat() {
   }
 
   return (
-    <div className="assistant-card">
+    <div className={`assistant-card${compact ? " assistant-card-compact" : ""}`}>
       <p className="assistant-disclaimer">
-        This demo assistant answers from public studio information only. Questions are processed by
-        OpenAI and Upstash Workflow; transient responses expire after 10 minutes and are not saved as
-        studio conversation history. Don&apos;t share sensitive information.
+        A Gemini-powered guide uses public studio information only. Your question and answer are
+        saved for future FAQ review without account or IP metadata. Submitted text is not
+        automatically scrubbed, so don&apos;t include names, contact details, or sensitive
+        information.
       </p>
       <div className="assistant-thread" aria-live="polite">
         {messages.length === 0 ? (
-          <p className="empty-state">Try asking about services, project references, or how to start.</p>
+          <p className="empty-state">Ask about services, the concept work, or how to start a project.</p>
         ) : (
           messages.map((entry, index) => (
             <article className={`assistant-message assistant-message-${entry.role}`} key={index}>
@@ -122,7 +129,7 @@ export function ClientChat() {
           rows={3}
         />
         <button className="button-primary" type="submit" disabled={busy || !message.trim()}>
-          {busy ? "Waiting for answer…" : "Ask"}
+          {busy ? "Finding an answer…" : "Ask"}
         </button>
       </form>
     </div>

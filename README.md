@@ -15,8 +15,17 @@ be easy to explain in a recruiter-facing walkthrough.
 
 ## Website features
 
-- **Public portfolio:** home, services, fictional concept work, and an
-  optional public-information assistant.
+- **Public portfolio:** responsive home, services, and fictional concept work.
+- **Customer-support chatbot:** site-wide helping-hand widget and full-page
+  assistant, powered by Gemini 3.8 Flash with Gemini 3.5 Flash-Lite fallback.
+  A bounded agent loop can retrieve only static public service, inquiry, and
+  portfolio information; it cannot access private studio or client data.
+  Upstash Rate Limits and Workflow protect and retry requests, Redis keeps
+  transient polling results for ten minutes, and Supabase stores each
+  question/answer pair for future FAQ curation without separate account or IP
+  metadata. Submitted text is not automatically scrubbed; visitors are warned
+  not to include personal or sensitive information. Google AI free-tier
+  availability and quotas depend on the account and current provider terms.
 - **Inquiry intake:** validated inquiry and extended design brief, honeypot
   protection, shared Redis rate limiting, and atomic Supabase persistence.
 - **Reference uploads:** optional private JPEG/PNG/WebP references, signed
@@ -41,10 +50,7 @@ be easy to explain in a recruiter-facing walkthrough.
   outbound delivery, and verified inbound message persistence. Supabase remains
   the source of truth; Slack roles do not replace app/database permissions.
 - **Background processing:** QStash reference verification and retryable
-  Upstash Workflow runs for opted-in similarity and public assistant responses.
-- **Public assistant:** rate-limited answers based on public studio/demo
-  information only; it cannot query client or studio records, and response
-  values expire from Redis after ten minutes.
+  Upstash Workflow runs for opted-in similarity and chatbot answers.
 - **Finance overview:** protected, read-only view of recent revenue, payouts,
   expenses, and the latest quarterly report from the existing normalized
   schema. Transaction entry, reconciliation, and report publishing UI are not
@@ -96,7 +102,7 @@ availability, and local network before debugging credentials.
 | `/` | Public | Studio landing page. |
 | `/services`, `/work` | Public | Service overview and concept work. |
 | `/inquiry` | Public | Inquiry and design-brief form. |
-| `/assistant` | Public | Public-information-only website assistant. |
+| `/assistant` | Public | Full-page customer-support chatbot. |
 | `/account/sign-up`, `/account/sign-in` | Public | Client account access. |
 | `/account/projects` | Client | Client's submitted requests. |
 | `/account/projects/:id` | Client | One owned request's details. |
@@ -120,9 +126,10 @@ availability, and local network before debugging credentials.
 | `POST /api/inquiries/process-reference` | QStash signature | Verifies uploaded reference contents. |
 | `POST /api/inquiries/process-similarity` | QStash signature | Processes queued opt-in similarity work. |
 | `POST /api/workflows/inquiry-similarity` | Upstash Workflow | Durable consent-check and inquiry similarity steps. |
-| `POST /api/workflows/client-chat` | Upstash Workflow | Generates and stores a short-lived public assistant response. |
-| `GET`, `POST /api/client-chat` | Public | Rate-limited question submission and transient-result polling. |
-| `POST /api/client/auth` | Public | Client sign-in or sign-up, selected by `action`. |
+| `POST /api/workflows/client-chat` | Upstash Workflow | Runs the bounded Gemini tool loop, stores an idempotent Q&A pair in Supabase, and publishes a short-lived Redis result. |
+| `POST /api/client-chat` | Public | Rate-limited chatbot question submission with bounded conversation context. |
+| `GET /api/client-chat?id=:uuid` | Public | Polls the short-lived Redis response. |
+| `POST`, `DELETE /api/client/auth` | Public/session | Client sign-in/up and sign-out, selected by `action` for POST. |
 | `POST`, `DELETE /api/admin/auth` | Public/session | Studio sign-in and sign-out. |
 | `POST /api/designer/auth` | Public sign-in | Designer sign-in. |
 | `GET /api/admin/inquiries` | Studio member | Paginated inquiry list; `page`, `pageSize`, and `status` filters. |
@@ -135,8 +142,10 @@ availability, and local network before debugging credentials.
 | `POST /api/slack/events` | Slack signature | Verifies Slack Events API requests, handles uninstall, and persists eligible messages. |
 | `POST /api/slack/sync` | Cron bearer secret | Processes project-channel, membership-reconciliation, and message-outbox jobs. |
 | `POST /api/projects/:id/messages` | Designer or studio member | Stores project messages in Supabase and enqueues Slack delivery. |
+| `PATCH /api/projects/:id` | Project manager or studio member | Updates project manager, deadline, or lifecycle details as authorized. |
 | `POST`, `DELETE /api/projects/:id/members` | Project manager or studio member | Updates project membership/roles; triggers Slack membership reconciliation. |
 | `GET`, `POST`, `DELETE /api/projects/:id/presence` | Project member | Reads/writes short-lived online and typing state in Redis. |
+| `GET /api/cron/demo-retention` | Cron bearer secret | Removes stale synthetic inquiries and abandoned reference uploads. |
 
 Slack member mapping is required for workspace participation. Project manager
 and member roles remain authoritative in Kiln Studio; standard Slack channel

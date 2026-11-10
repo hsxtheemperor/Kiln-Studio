@@ -786,6 +786,7 @@ operational tables by triggers, not by foreign keys.
 18. [`20261109000000_reconcile_slack_project_members.sql`](../supabase/migrations/20261109000000_reconcile_slack_project_members.sql): reconciles Slack channel membership after project membership, account-link, team-active-state, and workspace-installation changes; supports installation revocation and reconnection.
 19. [`20261109010000_add_inquiry_reference_uploads.sql`](../supabase/migrations/20261109010000_add_inquiry_reference_uploads.sql): creates a private image bucket and server-only reference metadata; links uploads atomically to inquiries and queues verification.
 20. [`20261109020000_add_opt_in_inquiry_similarity.sql`](../supabase/migrations/20261109020000_add_opt_in_inquiry_similarity.sql): adds explicit consent, advisory match state, and human review fields while preserving atomic inquiry creation.
+21. [`20261111000000_add_customer_support_messages.sql`](../supabase/migrations/20261111000000_add_customer_support_messages.sql): creates a small, service-role-only table for idempotent public support question/answer pairs without separate account/IP metadata; submitted text is not scrubbed.
 
 Migrations 9 to 12 harden and refine migration 8; migrations 13 to 15 finalize
 inquiry priority, activity-feed access/Realtime, finance, and project-team
@@ -793,6 +794,11 @@ membership boundaries. Migrations 16 to 18 add the optional Slack sync layer whi
 authoritative. Migration 19 adds private inquiry-reference uploads and their
 QStash verification workflow. Migration 20 adds opt-in similarity and human
 review data; vector records remain auxiliary and are not relational source data.
+Migration 21 stores chatbot Q&A for later manual FAQ curation. It deliberately
+does not store account, client, email, or IP metadata; submitted question and
+answer text is stored as-is and is not automatically scrubbed. The UI warns
+visitors not to include personal or sensitive information. Public roles cannot
+read or write this table directly.
 
 Do not treat edits made only in the Supabase dashboard as the source of truth.
 Test a fresh database and a database upgraded through the full migration chain.
@@ -835,6 +841,7 @@ project identifiers into project docs that are intended for public review.
 | `slack_project_sync_jobs` | Durable channel create/archive/member-reconciliation work with retry state. |
 | `slack_message_outbox` | Durable app-to-Slack delivery work, with retry and provider timestamp tracking. |
 | `slack_event_receipts`, `slack_provider_messages` | Idempotency receipts and provider-message-to-app-message mapping for inbound Slack events. |
+| `customer_support_messages` | Idempotent public chatbot question/answer pairs and Gemini model name for future FAQ curation; contains no user/account/IP identity and is writable only by the server service role. |
 | `project_revenue` | Project receipts and refund adjustments. |
 | `project_payouts` | Project member payouts, including planned-to-paid transitions and refund adjustments. |
 | `expenses` | One-time studio overhead expenses; rows are append-only except for a one-way void operation. |
@@ -1319,6 +1326,8 @@ Required environment variables:
 | `UPSTASH_REDIS_REST_TOKEN` | Server-only Upstash credential. |
 | `QSTASH_TOKEN` | Server-only token used to enqueue reference-image verification. |
 | `QSTASH_CURRENT_SIGNING_KEY`, `QSTASH_NEXT_SIGNING_KEY` | Server-only signing keys used to authenticate QStash deliveries. |
+| `GOOGLEAI_API` | Server-only Google AI API key used by the public Gemini support assistant. |
+| `OPENAI_API_KEY` | Server-only key used to create embeddings for opted-in inquiry similarity. |
 | `SLACK_CLIENT_ID`, `SLACK_CLIENT_SECRET` | Slack OAuth app credentials; server-only. |
 | `SLACK_REDIRECT_URI` | Exact OAuth callback URL registered in the Slack app. |
 | `SLACK_SIGNING_SECRET` | Verifies Slack Events API requests. |

@@ -147,11 +147,16 @@ hosted integration tests at a real project as a substitute for local migration
 validation.
 
 The public assistant is restricted to public studio/demo information, is
-rate-limited, and does not have access to client or studio records. Questions
-are sent to the configured model provider and carried by Workflow; the result
-is stored in Redis for ten minutes and is not durable chat history. Keep that
-disclosure visible, and do not send private information or expose provider
-credentials to the browser.
+rate-limited, and does not have access to client or studio records. Gemini
+function calling is limited to static public tools (services, inquiry checklist,
+and fictional portfolio concepts); it cannot take external actions. Upstash
+Workflow carries each answer; Redis stores the polling result for ten minutes.
+Supabase stores the question/answer pair for manual FAQ curation without an
+separate account, email, or IP metadata field. Submitted text is stored as-is,
+without automatic PII scrubbing. The table is service-role-only; there is not
+yet a FAQ admin interface or automatic training flow. Keep the disclosure
+visible, do not send personal or sensitive information, and never expose
+provider credentials to the browser.
 
 Team online/typing state uses Redis keys scoped to active project membership.
 Presence expires automatically, while messages remain in Supabase. It is not

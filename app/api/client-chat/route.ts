@@ -10,7 +10,15 @@ import {
 
 export const runtime = "nodejs";
 
-const RequestSchema = z.object({ message: z.string().trim().min(1).max(1000) }).strict();
+const RequestSchema = z.object({
+  message: z.string().trim().min(1).max(1000),
+  history: z.array(
+    z.object({
+      role: z.enum(["user", "model"]),
+      text: z.string().trim().min(1).max(2000),
+    }).strict(),
+  ).max(8).optional().default([]),
+}).strict();
 const RequestIdSchema = z.string().uuid();
 
 export async function POST(request: Request) {
@@ -56,7 +64,11 @@ export async function POST(request: Request) {
 
   const requestId = randomUUID();
   try {
-    await queueClientChatAnswer(requestId, parsed.data.message);
+    await queueClientChatAnswer(
+      requestId,
+      parsed.data.message,
+      parsed.data.history,
+    );
   } catch (error) {
     console.error("Client assistant request could not be queued.", error);
     return NextResponse.json(

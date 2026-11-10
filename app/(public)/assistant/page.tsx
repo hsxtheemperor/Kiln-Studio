@@ -6,8 +6,11 @@ export default function AssistantPage() {
       <header className="page-heading">
         <div>
           <p className="eyebrow">Kiln Studio</p>
-          <h1>Ask the studio</h1>
-          <p>Get quick answers about the demo studio and starting a project.</p>
+          <h1>A helping hand</h1>
+          <p>
+            Ask about our services, fictional concept work, or how to use the
+            project inquiry form.
+          </p>
         </div>
       </header>
       <ClientChat />

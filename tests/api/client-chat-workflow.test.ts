@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   requestPayload: {} as unknown,
   run: vi.fn(),
   generateClientChatAnswer: vi.fn(),
+  persistCustomerSupportMessage: vi.fn(),
   storeClientChatAnswer: vi.fn(),
 }));
 
@@ -34,6 +35,9 @@ vi.mock("@upstash/workflow/nextjs", () => ({
 vi.mock("@/lib/assistant/client-chat", () => ({
   generateClientChatAnswer: mocks.generateClientChatAnswer,
 }));
+vi.mock("@/lib/assistant/customer-support-messages", () => ({
+  persistCustomerSupportMessage: mocks.persistCustomerSupportMessage,
+}));
 vi.mock("@/lib/assistant/client-chat-queue", () => ({
   storeClientChatAnswer: mocks.storeClientChatAnswer,
 }));
@@ -46,17 +50,19 @@ const message = "How do I start a project?";
 describe("POST /api/workflows/client-chat", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.requestPayload = { requestId, message };
+    mocks.requestPayload = { requestId, message, history: [] };
     mocks.run.mockImplementation(
       async (_name: string, operation: () => Promise<unknown>) => operation(),
     );
-    mocks.generateClientChatAnswer.mockResolvedValue(
-      "Share the project through the inquiry form.",
-    );
+    mocks.generateClientChatAnswer.mockResolvedValue({
+      answer: "Share the project through the inquiry form.",
+      model: "gemini-3.8-flash",
+    });
+    mocks.persistCustomerSupportMessage.mockResolvedValue(undefined);
     mocks.storeClientChatAnswer.mockResolvedValue(undefined);
   });
 
-  it("answers public questions and stores only a short-lived result", async () => {
+  it("runs the answer, durable FAQ persistence, then stores a short-lived result", async () => {
     const response = await POST(
       new Request("https://kiln-studio.test/api/workflows/client-chat", {
         method: "POST",
@@ -71,10 +77,21 @@ describe("POST /api/workflows/client-chat", () => {
     );
     expect(mocks.run).toHaveBeenNthCalledWith(
       2,
+      "persist-customer-support-message",
+      expect.any(Function),
+    );
+    expect(mocks.run).toHaveBeenNthCalledWith(
+      3,
       "store-short-lived-assistant-result",
       expect.any(Function),
     );
-    expect(mocks.generateClientChatAnswer).toHaveBeenCalledWith(message);
+    expect(mocks.generateClientChatAnswer).toHaveBeenCalledWith(message, []);
+    expect(mocks.persistCustomerSupportMessage).toHaveBeenCalledWith({
+      requestId,
+      question: message,
+      answer: "Share the project through the inquiry form.",
+      model: "gemini-3.8-flash",
+    });
     expect(mocks.storeClientChatAnswer).toHaveBeenCalledWith(
       requestId,
       "Share the project through the inquiry form.",

@@ -1722,6 +1722,100 @@ a.activity-feed-entry:hover strong {
   justify-self: end;
 }
 
+.support-chat-widget {
+  position: fixed;
+  right: max(24px, env(safe-area-inset-right));
+  bottom: max(24px, env(safe-area-inset-bottom));
+  z-index: 50;
+  display: grid;
+  justify-items: end;
+  gap: 12px;
+}
+
+.support-chat-toggle {
+  min-height: 48px;
+  padding: 0 19px;
+  border: 1px solid var(--ink);
+  border-radius: 999px;
+  background: var(--ink);
+  color: #fffdf8;
+  box-shadow: 0 8px 26px rgb(23 25 21 / 18%);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.support-chat-panel {
+  display: grid;
+  width: min(440px, calc(100vw - 48px));
+  max-height: min(720px, calc(100dvh - 100px));
+  overflow: auto;
+  border: 1px solid #d5d2c9;
+  background: #f7f5ef;
+  box-shadow: 0 18px 56px rgb(23 25 21 / 20%);
+}
+
+.support-chat-panel[hidden] {
+  display: none;
+}
+
+.support-chat-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 18px;
+  border-bottom: 1px solid #d5d2c9;
+}
+
+.support-chat-header .eyebrow {
+  margin-bottom: 5px;
+}
+
+.support-chat-header h2 {
+  margin: 0;
+  font-family: var(--serif);
+  font-size: 25px;
+  font-weight: 400;
+}
+
+.support-chat-close {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid #d5d2c9;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+  font-size: 24px;
+  line-height: 1;
+}
+
+.assistant-card-compact {
+  gap: 12px;
+  padding: 14px;
+  border: 0;
+}
+
+.assistant-card-compact .assistant-thread {
+  min-height: 150px;
+  max-height: 300px;
+  padding: 10px;
+}
+
+.assistant-card-compact .assistant-disclaimer {
+  font-size: 10px;
+}
+
+.assistant-card-compact .assistant-message {
+  max-width: 96%;
+  padding: 9px 11px;
+  font-size: 12px;
+}
+
 .channel-list {
   display: grid;
   gap: 12px;
@@ -1845,6 +1939,16 @@ a.activity-feed-entry:hover strong {
 }
 
 @media (max-width: 760px) {
+  .support-chat-widget {
+    right: max(12px, env(safe-area-inset-right));
+    bottom: max(12px, env(safe-area-inset-bottom));
+  }
+
+  .support-chat-panel {
+    width: min(440px, calc(100vw - 24px));
+    max-height: min(680px, calc(100dvh - 86px));
+  }
+
   .site-shell {
     width: min(100% - 36px, 1320px);
   }

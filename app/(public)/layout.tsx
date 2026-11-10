@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { SupportChatWidget } from "@/components/assistant/support-chat-widget";
 
 export default function PublicLayout({
   children,
@@ -24,6 +25,7 @@ export default function PublicLayout({
           </nav>
         </header>
         <main>{children}</main>
+        <SupportChatWidget />
         <footer className="site-footer">
           <span>© Kiln Studio · fictional concept studio</span>
           <div className="site-footer-links">

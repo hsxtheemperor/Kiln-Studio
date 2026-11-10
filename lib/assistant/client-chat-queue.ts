@@ -2,7 +2,11 @@ import "server-only";
 
 import { Client } from "@upstash/workflow";
 import { Redis } from "@upstash/redis";
-import { generateClientChatAnswer } from "./client-chat";
+import {
+  generateClientChatAnswer,
+  type ClientChatTurn,
+} from "./client-chat";
+import { persistCustomerSupportMessage } from "./customer-support-messages";
 
 const RESULT_TTL_SECONDS = 600;
 
@@ -19,7 +23,11 @@ function isLocalSite(siteUrl: string) {
   }
 }
 
-export async function queueClientChatAnswer(requestId: string, message: string) {
+export async function queueClientChatAnswer(
+  requestId: string,
+  message: string,
+  history: ClientChatTurn[] = [],
+) {
   const redis = Redis.fromEnv();
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/+$/, "");
   const token = process.env.QSTASH_TOKEN;
@@ -34,8 +42,14 @@ export async function queueClientChatAnswer(requestId: string, message: string) 
 
   if (siteUrl && isLocalSite(siteUrl)) {
     try {
-      const answer = await generateClientChatAnswer(message);
-      await redis.set(key, JSON.stringify({ status: "ready", answer }), {
+      const generated = await generateClientChatAnswer(message, history);
+      await persistCustomerSupportMessage({
+        requestId,
+        question: message,
+        answer: generated.answer,
+        model: generated.model,
+      });
+      await redis.set(key, JSON.stringify({ status: "ready", answer: generated.answer }), {
         ex: RESULT_TTL_SECONDS,
       });
       return;
@@ -53,7 +67,7 @@ export async function queueClientChatAnswer(requestId: string, message: string) 
   try {
     await new Client({ token }).trigger({
       url: `${siteUrl}/api/workflows/client-chat`,
-      body: { requestId, message },
+      body: { requestId, message, history },
       retries: 5,
       workflowRunId: `client-chat-${requestId}`,
     });

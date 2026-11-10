@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   redisSet: vi.fn(),
   redisDel: vi.fn(),
   generateClientChatAnswer: vi.fn(),
+  persistCustomerSupportMessage: vi.fn(),
 }));
 
 vi.mock("@upstash/workflow", () => ({
@@ -28,6 +29,9 @@ vi.mock("@upstash/redis", () => ({
 }));
 vi.mock("../../lib/assistant/client-chat", () => ({
   generateClientChatAnswer: mocks.generateClientChatAnswer,
+}));
+vi.mock("../../lib/assistant/customer-support-messages", () => ({
+  persistCustomerSupportMessage: mocks.persistCustomerSupportMessage,
 }));
 
 import {
@@ -49,11 +53,16 @@ describe("client assistant queue", () => {
     mocks.redisGet.mockResolvedValue(null);
     mocks.redisSet.mockResolvedValue("OK");
     mocks.redisDel.mockResolvedValue(1);
-    mocks.generateClientChatAnswer.mockResolvedValue("Public studio answer.");
+    mocks.generateClientChatAnswer.mockResolvedValue({
+      answer: "Public studio answer.",
+      model: "gemini-3.8-flash",
+    });
+    mocks.persistCustomerSupportMessage.mockResolvedValue(undefined);
   });
 
   it("initializes a short-lived result and triggers a Workflow", async () => {
-    await queueClientChatAnswer(requestId, "How do I start? ");
+    const history = [{ role: "user" as const, text: "What do you do?" }];
+    await queueClientChatAnswer(requestId, "How do I start? ", history);
 
     expect(mocks.redisSet).toHaveBeenCalledWith(
       `kiln-studio:client-chat:result:${requestId}`,
@@ -62,7 +71,7 @@ describe("client assistant queue", () => {
     );
     expect(mocks.trigger).toHaveBeenCalledWith({
       url: "https://kiln-studio.test/api/workflows/client-chat",
-      body: { requestId, message: "How do I start? " },
+      body: { requestId, message: "How do I start? ", history },
       retries: 5,
       workflowRunId: `client-chat-${requestId}`,
     });
@@ -77,12 +86,25 @@ describe("client assistant queue", () => {
     expect(mocks.trigger).not.toHaveBeenCalled();
     expect(mocks.generateClientChatAnswer).toHaveBeenCalledWith(
       "What services do you offer?",
+      [],
     );
+    expect(mocks.persistCustomerSupportMessage).toHaveBeenCalledWith({
+      requestId,
+      question: "What services do you offer?",
+      answer: "Public studio answer.",
+      model: "gemini-3.8-flash",
+    });
     expect(mocks.redisSet).toHaveBeenLastCalledWith(
       `kiln-studio:client-chat:result:${requestId}`,
       JSON.stringify({ status: "ready", answer: "Public studio answer." }),
       { ex: 600 },
     );
+    expect(mocks.persistCustomerSupportMessage).toHaveBeenCalledWith({
+      requestId,
+      question: "What services do you offer?",
+      answer: "Public studio answer.",
+      model: "gemini-3.8-flash",
+    });
   });
 
   it("removes pending state if Workflow publication fails", async () => {
