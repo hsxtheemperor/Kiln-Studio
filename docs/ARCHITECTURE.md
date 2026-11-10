@@ -102,6 +102,8 @@ Next.js route groups organize layouts without adding URL prefixes.
 | `app/api/projects/[id]/members/route.ts` | Adds and removes project team members using the authenticated session; RLS authorizes administrators/project managers. |
 | `app/api/projects/[id]/messages/route.ts` | Persists project-channel messages with sender identity derived from the authenticated team profile. |
 | `app/api/projects/[id]/presence/route.ts` | Exposes project-member-only online and typing state using short-lived Upstash Redis keys. |
+| `app/api/slack/deliver/route.ts` | Verifies QStash delivery signatures, atomically claims one outbox row, and sends that message to Slack with a stable provider dedupe ID. |
+| `app/api/slack/sync/route.ts` | Processes the authenticated Slack project-channel, membership-reconciliation, and recovery outbox jobs. |
 | `lib/studio/project-channels.ts` | Loads RLS-filtered ordered project channels, current memberships, and recent channel messages. |
 | `lib/inquiries/schema.ts` | Inquiry options, validation, normalization, and database insert mapping. |
 | `lib/inquiries/reference-files.ts`, `reference-queue.ts` | Image constraints, content verification, and QStash delivery with local inline fallback. |
@@ -109,6 +111,8 @@ Next.js route groups organize layouts without adding URL prefixes.
 | `lib/assistant/client-chat.ts` | Calls Gemini 3.8 Flash (3.5 Flash-Lite fallback) with public-only context and a bounded allowlisted function-calling loop. |
 | `lib/assistant/client-chat-queue.ts` | Queues assistant work through Upstash Workflow and stores transient polling results in Redis for ten minutes. |
 | `lib/assistant/customer-support-messages.ts` | Persists idempotent Q&A pairs through the server-only Supabase service client without separate account/IP metadata; submitted text is not scrubbed. |
+| `lib/slack/outbox-queue.ts` | Publishes each new app message to QStash with an ID-based deduplication key; failed enqueue leaves the durable outbox for the daily sweep. |
+| `lib/slack/outbox.ts` | Shared Slack outbox processing for event-triggered delivery and the scheduled recovery worker. |
 | `lib/rate-limit/client-chat.ts` | Applies shared Redis rate limiting to public assistant requests. |
 | `lib/supabase/service.ts` | Server-only Supabase service-role client for narrowly scoped privileged work. |
 | `lib/project-priority.ts` | Priority score and label computation. |
@@ -142,6 +146,8 @@ Next.js route groups organize layouts without adding URL prefixes.
 | `supabase/migrations/20261109010000_add_inquiry_reference_uploads.sql` | Adds a private image bucket, server-only attachment metadata, and atomic inquiry-linking RPC. |
 | `supabase/migrations/20261109020000_add_opt_in_inquiry_similarity.sql` | Adds inquiry similarity consent/review state and extends atomic inquiry creation. |
 | `supabase/migrations/20261111000000_add_customer_support_messages.sql` | Adds a service-role-only table for customer-support Q&A curation without separate account/IP metadata; submitted text is not scrubbed. |
+| `supabase/migrations/20261111010000_allow_idempotent_support_message_upserts.sql` | Grants the service role SELECT on only the Q&A request idempotency key required for retry-safe upserts. |
+| `supabase/migrations/20261111020000_claim_slack_outbox_message.sql` | Adds atomic per-message Slack outbox claims for QStash delivery and concurrent retry safety. |
 | `supabase/tests/` | pgTAP coverage for inquiry priority/atomic writes, reference-file access and linking, project lifecycle and RLS, finance/report behavior, grants, team roles, channel rules, and support-message privacy/idempotency. |
 | `.github/workflows/ci.yml` | Runs application tests, QStash/Workflow-focused checks, typecheck/build, and clean local Supabase migration, lint, and pgTAP checks on pull requests and all pushes; no deployment. |
 | `lib/supabase/database.types.ts` | Application-side Supabase row/insert types. |

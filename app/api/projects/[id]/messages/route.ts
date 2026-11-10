@@ -3,6 +3,7 @@ import { z } from "zod";
 import { requireDesigner } from "@/lib/auth/require-designer";
 import { readJsonBody } from "@/lib/http/read-json";
 import { checkProjectMessageRateLimit } from "@/lib/rate-limit/project-messages";
+import { queueSlackMessageDelivery } from "@/lib/slack/outbox-queue";
 
 const MessageSchema = z.object({
   channel_id: z.string().uuid(),
@@ -174,6 +175,20 @@ export async function POST(request: Request, { params }: RouteContext) {
       { error: "The project message could not be saved." },
       { status: 500, headers: { "Cache-Control": "no-store" } },
     );
+  }
+
+  try {
+    const queued = await queueSlackMessageDelivery(data.id);
+    if (!queued.queued) {
+      console.warn("Slack message remains in the durable outbox for scheduled recovery.", {
+        messageId: data.id,
+      });
+    }
+  } catch (queueError) {
+    console.error("Slack message delivery could not be queued; the outbox will recover it.", {
+      messageId: data.id,
+      error: queueError,
+    });
   }
 
   return NextResponse.json(

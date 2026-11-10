@@ -811,6 +811,10 @@ export type Database = {
         Args: { p_limit?: number };
         Returns: SlackMessageOutboxRow[];
       };
+      claim_slack_message_outbox_by_message_id: {
+        Args: { p_message_id: string };
+        Returns: SlackMessageOutboxRow[];
+      };
       complete_slack_project_sync: {
         Args: {
           p_project_id: string;

@@ -31,6 +31,27 @@ SELECT ok(
   'service role can persist question and answer pairs'
 );
 SELECT ok(
+  has_column_privilege(
+    'service_role',
+    'public.customer_support_messages',
+    'request_id',
+    'SELECT'
+  )
+  AND NOT has_column_privilege(
+    'service_role',
+    'public.customer_support_messages',
+    'question',
+    'SELECT'
+  )
+  AND NOT has_column_privilege(
+    'service_role',
+    'public.customer_support_messages',
+    'answer',
+    'SELECT'
+  ),
+  'service role can check only the idempotency key needed for conflict handling'
+);
+SELECT ok(
   NOT EXISTS (
     SELECT 1
     FROM pg_catalog.pg_attribute
