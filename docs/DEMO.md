@@ -37,8 +37,10 @@ scrubbed; visitors are told not to include personal or sensitive details.
 - The inquiry inbox supports status filtering, pagination, and inquiry detail
   review, including priority, private verified references, and optional
   similarity recommendations.
-- Designers use a separate sign-in and priority queue, with inquiry details
-  and inquiry-linked messages.
+- Designers use a separate sign-in and priority queue. The queue exposes only
+  minimal request fields before assignment; inquiry/brief details and
+  inquiry-linked messages are available only to assigned designers and studio
+  members.
 - A studio member accepting an inquiry creates a distinct project and its
   dedicated project channel.
 
@@ -51,9 +53,11 @@ and roles within the database authorization rules. A project manager completes
 their project; completion archives the channel and prevents new messages.
 
 Project-channel messages persist in PostgreSQL and are delivered to connected
-clients through Supabase Realtime. The workspace loads up to the latest 100
-messages per visible channel. Redis stores short-lived online/typing indicators;
-these are ephemeral and are not a durable presence history.
+clients through Supabase Realtime. The workspace loads message history on
+demand in pages of up to 50, and only the open conversation subscribes to
+Realtime and sends presence/heartbeat requests. Redis stores short-lived
+online/typing indicators; these are ephemeral and are not a durable presence
+history.
 
 Slack is an optional synchronized surface. The app database remains the source
 of truth for projects, app membership, roles, and messages. The worker creates
@@ -99,8 +103,8 @@ authorization or provide equivalent project-role permissions.
   PII scrubbing is provided.
 - No autonomous agent can change studio records or make business decisions.
 - Finance entry and accounting reconciliation are not available in the UI.
-- Availability self-service, general/announcement chat composition, and channel
-  message pagination are not implemented.
+- Availability self-service and general/announcement chat composition are not
+  implemented.
 - Slack history import/backfill, full edit/delete/thread synchronization, and
   per-project Slack moderator permissions are not implemented.
 - Upstash Box and the Lead-Generator repository workflow are deferred.

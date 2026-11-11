@@ -35,8 +35,9 @@ been fully verified.
 
 - Finance has a protected read-only overview, but no transaction entry,
   reconciliation, or report-publishing UI.
-- The project channel view loads the latest 100 messages; message pagination is
-  not implemented.
+- Project-channel message history is fetched on demand in pages of up to 50.
+  Only the open conversation subscribes to Realtime or sends presence and
+  heartbeat requests.
 - Availability self-service, general/announcement chat composition, and
   channel message edit/delete/thread synchronization are not implemented.
 - There is no FAQ curation interface, automatic FAQ training, or assistant

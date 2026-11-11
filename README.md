@@ -18,12 +18,12 @@ personal, confidential, payment, or otherwise sensitive information.
 | Similarity advisory | Explicit opt-in; approved brief text is embedded and matched with Upstash Vector. Similarity and reviewed complexity/hour context are advisory and do not change priority or accept work automatically. |
 | Client portal | Supabase Auth sign-up/sign-in and client-owned inquiry list/detail views. |
 | Studio workspace | Protected dashboard, status-filtered/paginated inquiry inbox, inquiry detail, status/priority updates, private reference previews, similarity review, and live audit feed. |
-| Designer workspace | Protected priority queue, inquiry detail, and inquiry-linked messages. |
+| Designer workspace | Protected top-20 priority queue with a minimal pre-assignment projection; full inquiry/brief details and messages are available only for assigned projects. |
 | Project lifecycle | Accepting an inquiry creates a project and dedicated channel. Admins manage the PM/deadline; the PM can complete a project. |
-| Team collaboration | Live team directory, project membership/roles, persistent project-channel messages with Supabase Realtime, and short-lived Redis presence/typing indicators. |
+| Team collaboration | Live team directory, project membership/roles, on-demand paginated project-channel messages with Supabase Realtime for the open conversation, and short-lived Redis presence/typing indicators for that conversation. |
 | Slack sync | Optional OAuth workspace install and designer account linking; project-channel/member reconciliation; durable app-to-Slack delivery; verified, deduplicated inbound message storage. Supabase remains authoritative for access and history. |
 | AI support guide | Site-wide widget and `/assistant` page, powered by Gemini Flash with bounded public-information tools. No access to private studio/client records or external actions. |
-| Finance overview | Protected, read-only view of recent normalized finance records and the latest report. Transaction entry, reconciliation, and report publishing UI are not implemented. |
+| Finance overview | Studio-member-only, read-only view of recent normalized finance records and the latest report. Transaction entry, reconciliation, and report publishing UI are not implemented. |
 | Operations | QStash reference verification and event-driven Slack delivery, Upstash Workflow for retryable tasks, one daily Vercel Cron as a Slack-outbox recovery sweep and 14-day demo-data cleanup, RLS-protected audit records, CI tests, and Vercel Speed Insights. |
 
 ### Technical specifications
@@ -50,6 +50,23 @@ personal, confidential, payment, or otherwise sensitive information.
 - **Quality gates:** Vitest unit/API tests, TypeScript typecheck, production
   build, Supabase migration/schema checks, and pgTAP tests in GitHub Actions.
 
+### Example end-to-end flow
+
+1. A visitor sends a synthetic inquiry and optional visual references. The
+   server validates the request, checks abuse controls, computes priority, and
+   persists the inquiry and extended brief atomically.
+2. A studio member reviews the request, can inspect optional reference and
+   opt-in similarity results, and accepts it to create a project and channel.
+3. The designer queue shows a minimal prioritized request projection. A
+   designer can open sensitive details and the inquiry message room only after
+   being added to that project's team.
+4. Project members open a channel to load recent messages and receive Realtime
+   inserts. Older history is paginated; presence is ephemeral and scoped to the
+   open conversation.
+5. App messages are written to PostgreSQL first, then delivered to Slack by a
+   deduplicated QStash job. The daily Cron is recovery, not the normal delivery
+   path.
+
 ### Important demo boundaries
 
 - All portfolio examples and client/business records should be treated as
@@ -59,6 +76,13 @@ personal, confidential, payment, or otherwise sensitive information.
 - Finance is read-only in the app; do not treat demo records as accounting data.
 - Slack behavior depends on an installed workspace and valid provider setup;
   Slack does not implement Kiln's project-role authorization.
+- Designers see only a minimal unassigned-request queue. Inquiry details,
+  extended briefs, project membership, and message history are assignment-
+  scoped in both application routes and database RLS. Studio members retain
+  their intended operational access.
+- Legacy finance summary tables remain in the schema for historical data.
+  Their reads are limited to studio members and authenticated inserts are
+  revoked; the current finance UI reads normalized finance/report data only.
 - The assistant stores question/answer text for FAQ review, without separate
   account/IP metadata. Submitted text is not PII-scrubbed automatically.
 - Upstash Box/Lead-Generator automation and autonomous studio-record actions
@@ -72,9 +96,10 @@ work are in [docs/PROD.md](./docs/PROD.md) and [docs/SLACK.md](./docs/SLACK.md).
 
 ## Local development
 
-Requirements: Node.js supported by the installed Next.js version, pnpm, a
-configured Supabase project, and Upstash credentials for rate limits,
-background work, and enabled optional features.
+Requirements: Node.js supported by the installed Next.js version, pnpm, and
+Supabase CLI with Docker-compatible container support for local database
+checks. Configure Supabase and Upstash credentials for the app features you
+want to exercise.
 
 1. Install dependencies:
 
@@ -82,13 +107,25 @@ background work, and enabled optional features.
    pnpm install --frozen-lockfile
    ```
 
-2. Copy `.env.example` to `.env.local` and fill in valid provider values. Never
-   commit `.env.local` or expose the service-role key.
-3. Apply reviewed SQL migrations to the intended Supabase project using the
-   Supabase CLI; see [docs/DATABASE.md](./docs/DATABASE.md). Do not run
-   `supabase db reset` against a hosted project.
-4. Privately provision the Supabase Auth users and trusted app metadata required
-   for admin/designer access; there is no public studio registration.
+2. Copy `.env.example` to `.env.local` and fill in the values for your local
+   or dedicated development environment. Never commit `.env.local` or expose
+   the service-role key.
+3. To run the database locally, start Supabase and apply the repository
+   migrations to a clean local database:
+
+   ```sh
+   supabase start
+   supabase db reset --no-seed
+   supabase db lint --schema public --fail-on error
+   supabase test db
+   ```
+
+   `supabase db reset` is destructive to the local database; never use it
+   against a hosted project. For a hosted development project, link the
+   intended project and review migrations before pushing. See
+   [docs/DATABASE.md](./docs/DATABASE.md).
+4. Privately provision Supabase Auth users and trusted `app_metadata` access
+   levels for studio/designer accounts; there is no public studio registration.
 5. Start the development server:
 
    ```sh
@@ -117,8 +154,8 @@ sign-in operations cannot be verified.
 | `/admin/team` | Studio member | Team directory and project collaboration workspace. |
 | `/admin/finance` | Studio member | Read-only finance and latest quarterly report overview. |
 | `/designer/sign-in` | Public sign-in | Designer authentication. |
-| `/designer` | Designer or studio member | Priority queue and request links. |
-| `/designer/requests/:id` | Designer or studio member | Request details and project room. |
+| `/designer` | Designer or studio member | Minimal priority queue; request details are assignment-scoped. |
+| `/designer/requests/:id` | Assigned designer or studio member | Request details and inquiry-linked project room. |
 | `/designer/team` | Designer or studio member | Team directory and project collaboration workspace. |
 
 ## API surface
@@ -139,17 +176,18 @@ sign-in operations cannot be verified.
 | `GET /api/admin/inquiries` | Studio member | Paginated inquiry list; `page`, `pageSize`, and `status` filters. |
 | `GET /api/admin/inquiries/:id` | Studio member | Inquiry and brief detail. |
 | `PATCH /api/admin/inquiries/:id` | Studio member | Updates inquiry status and/or priority. |
-| `GET`, `POST /api/designer/messages?inquiry_id=:id` | Designer or studio member | Reads or posts messages for an inquiry. |
+| `GET`, `POST /api/designer/messages?inquiry_id=:id` | Assigned designer or studio member | Reads/posts assignment-scoped messages; GET returns up to 50 messages with an older-history cursor. |
 | `GET /api/slack/status` | Designer or studio member | Reports whether the workspace is installed and the current user's Slack identity is linked. |
 | `GET /api/slack/install`, `GET /api/slack/connect` | Studio member / designer | Starts verified Slack workspace installation or user linking. |
 | `GET /api/slack/callback` | Signed-in user | Completes the OAuth callback and stores encrypted tokens or verified identity mapping. |
 | `POST /api/slack/events` | Slack signature | Verifies Slack Events API requests, handles uninstall, and persists eligible messages. |
 | `POST /api/slack/deliver` | QStash signature | Atomically claims and delivers one app message from the durable Slack outbox; QStash retries failed deliveries. |
 | `POST /api/slack/sync` | Cron bearer secret | Processes project-channel, membership-reconciliation, and pending outbox jobs as a recovery sweep. |
-| `POST /api/projects/:id/messages` | Designer or studio member | Stores project messages in Supabase and publishes an ID-deduplicated Slack delivery job. |
+| `GET /api/projects/:id/messages?channel_id=:id` | Project member or studio member | Reads up to 50 messages for one project channel with an older-history cursor. |
+| `POST /api/projects/:id/messages` | Project member or studio member | Stores project messages in Supabase and publishes an ID-deduplicated Slack delivery job. |
 | `PATCH /api/projects/:id` | Project manager or studio member | Updates project manager, deadline, or lifecycle details as authorized. |
 | `POST`, `DELETE /api/projects/:id/members` | Project manager or studio member | Updates project membership/roles; triggers Slack membership reconciliation. |
-| `GET`, `POST`, `DELETE /api/projects/:id/presence` | Project member | Reads/writes short-lived online and typing state in Redis. |
+| `GET`, `POST`, `DELETE /api/projects/:id/presence` | Project member | Reads/writes short-lived online and typing state in Redis for the open conversation. |
 | `GET /api/cron/daily` | Cron bearer secret | Single daily Vercel Cron entry point; runs Slack sync, then stale demo-data cleanup. |
 | `GET /api/cron/demo-retention` | Cron bearer secret | Cleanup operation invoked by the daily scheduler; can also be run manually. |
 
@@ -175,6 +213,18 @@ pnpm build
 The suite covers validation, auth/authorization behavior, queueing, workflows,
 database policies, and key API flows. It does not replace browser-level
 end-to-end testing against a configured environment.
+
+Database checks can also be run locally with the Supabase CLI:
+
+```sh
+supabase db reset --no-seed
+supabase db lint --schema public --fail-on error
+supabase test db
+```
+
+The pgTAP suite includes assignment-boundary tests for designer inquiry,
+project, brief, and message access, plus denial of designer access to legacy
+finance records.
 
 ## Continuous integration
 

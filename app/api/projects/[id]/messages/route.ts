@@ -8,11 +8,109 @@ import { queueSlackMessageDelivery } from "@/lib/slack/outbox-queue";
 const MessageSchema = z.object({
   channel_id: z.string().uuid(),
   body: z.string().trim().min(1).max(2000),
-});
+}).strict();
 
 const ProjectIdSchema = z.string().uuid();
+const PAGE_SIZE = 50;
 
 type RouteContext = { params: Promise<{ id: string }> };
+
+export async function GET(request: Request, { params }: RouteContext) {
+  const authorization = await requireDesigner();
+  if (!authorization.authorized) {
+    return authorization.response;
+  }
+
+  const { id: projectId } = await params;
+  const { searchParams } = new URL(request.url);
+  const channelId = z.string().uuid().safeParse(searchParams.get("channel_id"));
+  const before = searchParams.get("before");
+
+  if (
+    !ProjectIdSchema.safeParse(projectId).success ||
+    !channelId.success ||
+    (before !== null && !Number.isFinite(Date.parse(before)))
+  ) {
+    return NextResponse.json(
+      { error: "A valid project, channel, and message cursor are required." },
+      { status: 400, headers: { "Cache-Control": "no-store" } },
+    );
+  }
+
+  const { data: project, error: projectError } = await authorization.supabase
+    .from("projects")
+    .select("id")
+    .eq("id", projectId)
+    .maybeSingle();
+  if (projectError) {
+    console.error("Project message access could not be verified.", projectError.message);
+    return NextResponse.json(
+      { error: "Project messages are temporarily unavailable." },
+      { status: 503, headers: { "Cache-Control": "no-store" } },
+    );
+  }
+  if (!project) {
+    return NextResponse.json(
+      { error: "The project was not found or is not accessible." },
+      { status: 404, headers: { "Cache-Control": "no-store" } },
+    );
+  }
+
+  const { data: channel, error: channelError } = await authorization.supabase
+    .from("project_channels")
+    .select("id")
+    .eq("id", channelId.data)
+    .eq("project_id", projectId)
+    .eq("channel_type", "project")
+    .maybeSingle();
+  if (channelError) {
+    console.error("Project message channel could not be verified.", channelError.message);
+    return NextResponse.json(
+      { error: "Project messages are temporarily unavailable." },
+      { status: 503, headers: { "Cache-Control": "no-store" } },
+    );
+  }
+  if (!channel) {
+    return NextResponse.json(
+      { error: "The project channel was not found or is not accessible." },
+      { status: 404, headers: { "Cache-Control": "no-store" } },
+    );
+  }
+
+  let query = authorization.supabase
+    .from("project_channel_messages")
+    .select("id, channel_id, sender_member_id, sender_name, sender_role, body, message_source, created_at")
+    .eq("channel_id", channel.id);
+  if (before) query = query.lt("created_at", before);
+
+  const { data, error } = await query
+    .order("created_at", { ascending: false })
+    .limit(PAGE_SIZE + 1);
+  if (error) {
+    if (error.code === "42501") {
+      return NextResponse.json(
+        { error: "You must be a project member to read this conversation." },
+        { status: 403, headers: { "Cache-Control": "no-store" } },
+      );
+    }
+    console.error("Project messages could not be loaded.", error.message);
+    return NextResponse.json(
+      { error: "Project messages are temporarily unavailable." },
+      { status: 503, headers: { "Cache-Control": "no-store" } },
+    );
+  }
+
+  const hasMore = (data?.length ?? 0) > PAGE_SIZE;
+  const messages = (data ?? []).slice(0, PAGE_SIZE).reverse();
+  return NextResponse.json(
+    {
+      messages,
+      hasMore,
+      nextCursor: hasMore ? messages[0]?.created_at ?? null : null,
+    },
+    { headers: { "Cache-Control": "no-store" } },
+  );
+}
 
 export async function POST(request: Request, { params }: RouteContext) {
   const authorization = await requireDesigner();
@@ -160,7 +258,7 @@ export async function POST(request: Request, { params }: RouteContext) {
       sender_role: projectMembership?.role_name ?? "TEAM_MEMBER",
       body: parsed.data.body,
     })
-    .select("id, channel_id, sender_member_id, sender_name, sender_role, body, created_at")
+    .select("id, channel_id, sender_member_id, sender_name, sender_role, body, message_source, created_at")
     .single();
 
   if (error) {

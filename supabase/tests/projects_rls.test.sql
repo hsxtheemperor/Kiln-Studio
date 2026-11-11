@@ -1,6 +1,6 @@
 BEGIN;
 
-SELECT plan(41);
+SELECT plan(42);
 
 SELECT set_config(
   'request.jwt.claims',
@@ -226,16 +226,21 @@ SELECT is(
   'adding a project member adds them to its channel'
 );
 
-SELECT throws_ok(
+SELECT lives_ok(
   $$ INSERT INTO public.project_members (project_id, team_member_id, role_name)
      SELECT id, '20000000-0000-0000-0000-000000000004', 'DESIGNER'
      FROM public.projects WHERE inquiry_id = '30000000-0000-0000-0000-000000000002' $$,
-  '42501',
-  NULL,
   'a project manager cannot add members to another project'
 );
 
 RESET ROLE;
+SELECT is(
+  (SELECT count(*) FROM public.project_members
+   WHERE project_id = (SELECT id FROM public.projects WHERE inquiry_id = '30000000-0000-0000-0000-000000000002')
+     AND team_member_id = '20000000-0000-0000-0000-000000000004'),
+  0::bigint,
+  'the unauthorized membership was not created'
+);
 SET LOCAL ROLE authenticated;
 SELECT set_config(
   'request.jwt.claims',

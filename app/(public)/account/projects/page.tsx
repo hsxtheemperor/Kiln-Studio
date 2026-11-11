@@ -2,12 +2,25 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { requireClient } from "@/lib/auth/require-client";
 
-export default async function ClientProjectListPage() {
+const PAGE_SIZE = 25;
+
+export default async function ClientProjectListPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ page?: string }>;
+}) {
   const authorization = await requireClient();
 
   if (!authorization.authorized) {
     redirect("/account/sign-in");
   }
+
+  const { page: pageParam } = await searchParams;
+  const requestedPage = Number(pageParam ?? "1");
+  const page = Number.isSafeInteger(requestedPage) && requestedPage >= 1 && requestedPage <= 1000
+    ? requestedPage
+    : 1;
+  const start = (page - 1) * PAGE_SIZE;
 
   const { data: profileData, error: profileError } = await authorization.supabase
     .from("client_profiles")
@@ -40,13 +53,16 @@ export default async function ClientProjectListPage() {
 
   const { data: requests, error: requestsError } = await authorization.supabase
     .from("inquiries")
-    .select("*")
+    .select("id, name, company, service, status, updated_at")
     .eq("client_id", clientProfile?.id ?? "")
-    .order("created_at", { ascending: false });
+    .order("created_at", { ascending: false })
+    .range(start, start + PAGE_SIZE);
 
   if (requestsError) {
     console.error("Client project list could not be loaded.", requestsError.message);
   }
+  const hasMoreRequests = !requestsError && (requests?.length ?? 0) > PAGE_SIZE;
+  const visibleRequests = requests?.slice(0, PAGE_SIZE) ?? [];
 
   return (
     <main className="admin-main">
@@ -78,13 +94,16 @@ export default async function ClientProjectListPage() {
       </div>
 
       <div style={{ marginTop: "24px" }}>
-        {(!requests || requests.length === 0) && (
+        {requestsError && (
+          <p className="form-error" role="alert">Your project requests could not be loaded.</p>
+        )}
+        {!requestsError && visibleRequests.length === 0 && (
           <div className="empty-state">
             You do not have any project requests yet. Start a new project to send a brief.
           </div>
         )}
 
-        {requests && requests.length > 0 && (
+        {visibleRequests.length > 0 && (
           <div className="inbox-table-wrap">
             <table className="inbox-table">
               <thead>
@@ -96,7 +115,7 @@ export default async function ClientProjectListPage() {
                 </tr>
               </thead>
               <tbody>
-                {requests.map((request) => (
+                {visibleRequests.map((request) => (
                   <tr key={request.id}>
                     <td>
                       <Link className="inbox-open" href={`/account/projects/${request.id}`}>
@@ -115,6 +134,21 @@ export default async function ClientProjectListPage() {
               </tbody>
             </table>
           </div>
+        )}
+        {!requestsError && (page > 1 || hasMoreRequests) && (
+          <nav className="admin-heading-row" aria-label="Project request pages">
+            {page > 1 ? (
+              <Link className="button-secondary" href={`/account/projects?page=${page - 1}`}>
+                Previous projects
+              </Link>
+            ) : <span />}
+            <span>Page {page}</span>
+            {hasMoreRequests && page < 1000 ? (
+              <Link className="button-secondary" href={`/account/projects?page=${page + 1}`}>
+                More projects
+              </Link>
+            ) : <span />}
+          </nav>
         )}
       </div>
     </main>
