@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ProjectRole } from "@/lib/studio/constants";
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
@@ -12,8 +13,32 @@ type ChannelPresence = {
   typing_member_ids: string[];
 };
 
+type MessagePage = {
+  hasMore: boolean;
+  nextCursor: string | null;
+  loading: boolean;
+};
+
 function isStringArray(value: unknown): value is string[] {
   return Array.isArray(value) && value.every((item) => typeof item === "string");
+}
+
+function isProjectChannelMessage(value: unknown): value is ProjectChannelMessageRow {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "id" in value && typeof value.id === "string" &&
+    "channel_id" in value && typeof value.channel_id === "string" &&
+    "sender_member_id" in value &&
+      (typeof value.sender_member_id === "string" || value.sender_member_id === null) &&
+    "sender_name" in value && typeof value.sender_name === "string" &&
+    "sender_role" in value &&
+      (typeof value.sender_role === "string" || value.sender_role === null) &&
+    "body" in value && typeof value.body === "string" &&
+    "message_source" in value &&
+      (value.message_source === "app" || value.message_source === "slack") &&
+    "created_at" in value && typeof value.created_at === "string"
+  );
 }
 
 const projectMemberRoles = [
@@ -45,12 +70,16 @@ export function TeamWorkspace({
   scope,
   liveProjectChannels,
   liveProjectChannelsError,
+  channelPage,
+  hasMoreChannels,
   teamMemberOptions,
   teamMemberOptionsError,
 }: {
   scope: "admin" | "designer";
   liveProjectChannels: ProjectChannelView[];
   liveProjectChannelsError?: string;
+  channelPage: number;
+  hasMoreChannels: boolean;
   teamMemberOptions?: ProjectManagerOption[];
   teamMemberOptionsError?: string;
 }) {
@@ -71,9 +100,9 @@ export function TeamWorkspace({
   const [collaborationErrors, setCollaborationErrors] = useState<Record<string, string>>({});
   const [messagesByChannel, setMessagesByChannel] = useState<
     Record<string, ProjectChannelMessageRow[]>
-  >(() =>
-    Object.fromEntries(liveProjectChannels.map((channel) => [channel.id, channel.messages])),
-  );
+  >({});
+  const [messagePages, setMessagePages] = useState<Record<string, MessagePage>>({});
+  const [activeChannelId, setActiveChannelId] = useState<string | null>(null);
   const [presenceByChannel, setPresenceByChannel] = useState<
     Record<string, ChannelPresence>
   >({});
@@ -85,8 +114,12 @@ export function TeamWorkspace({
   );
 
   useEffect(() => {
-    setMessagesByChannel(
-      Object.fromEntries(liveProjectChannels.map((channel) => [channel.id, channel.messages])),
+    const channelIds = new Set(liveProjectChannels.map((channel) => channel.id));
+    setMessagesByChannel((current) =>
+      Object.fromEntries(Object.entries(current).filter(([id]) => channelIds.has(id))),
+    );
+    setMessagePages((current) =>
+      Object.fromEntries(Object.entries(current).filter(([id]) => channelIds.has(id))),
     );
     setMembersByProject(
       Object.fromEntries(liveProjectChannels.map((channel) => [channel.project_id, channel.members])),
@@ -134,7 +167,8 @@ export function TeamWorkspace({
   }, []);
 
   useEffect(() => {
-    if (!liveProjectChannels.length) return;
+    const channel = liveProjectChannels.find((item) => item.id === activeChannelId);
+    if (!channel) return;
 
     let supabase: ReturnType<typeof createSupabaseBrowserClient>;
     try {
@@ -144,44 +178,55 @@ export function TeamWorkspace({
       return;
     }
 
-    const subscriptions = liveProjectChannels.map((channel) =>
-      supabase
-        .channel(`project-messages-${channel.id}`)
-        .on(
-          "postgres_changes",
-          {
-            event: "INSERT",
-            schema: "public",
-            table: "project_channel_messages",
-            filter: `channel_id=eq.${channel.id}`,
-          },
-          () => router.refresh(),
-        )
-        .subscribe((status) => {
-          if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
-            console.error(`Realtime updates are unavailable for project channel ${channel.id}.`);
-          }
-        }),
-    );
+    const subscription = supabase
+      .channel(`project-messages-${channel.id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "project_channel_messages",
+          filter: `channel_id=eq.${channel.id}`,
+        },
+        (payload) => {
+          const message = payload.new as ProjectChannelMessageRow;
+          setMessagesByChannel((current) => {
+            const messages = current[channel.id] ?? [];
+            if (messages.some((item) => item.id === message.id)) return current;
+            return {
+              ...current,
+              [channel.id]: [...messages, message],
+            };
+          });
+        },
+      )
+      .subscribe((status) => {
+        if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+          console.error(`Realtime updates are unavailable for project channel ${channel.id}.`);
+        }
+      });
 
     return () => {
-      for (const subscription of subscriptions) {
-        void supabase.removeChannel(subscription);
-      }
+      void supabase.removeChannel(subscription);
     };
-  }, [liveProjectChannels, router]);
+  }, [activeChannelId, liveProjectChannels]);
 
   useEffect(() => {
-    const activeChannels = liveProjectChannels.filter(
-      (channel) => channel.project_status === "active" && !channel.is_archived,
-    );
-    if (!activeChannels.length) return;
+    const channel = liveProjectChannels.find((item) => item.id === activeChannelId);
+    if (!channel || channel.project_status !== "active" || channel.is_archived) return;
+    const projectId = channel.project_id;
+    const channelId = channel.id;
 
     let active = true;
-    async function refreshPresence(channel: ProjectChannelView) {
+    let refreshing = false;
+    let heartbeating = false;
+
+    async function refreshPresence() {
+      if (refreshing) return;
+      refreshing = true;
       try {
         const response = await fetch(
-          `/api/projects/${channel.project_id}/presence?channel_id=${channel.id}`,
+          `/api/projects/${projectId}/presence?channel_id=${channelId}`,
           { cache: "no-store" },
         );
         const payload: unknown = await response.json();
@@ -205,30 +250,34 @@ export function TeamWorkspace({
         if (active) {
           setPresenceByChannel((current) => ({
             ...current,
-            [channel.id]: {
+            [channelId]: {
               online_member_ids: onlineMemberIds,
               typing_member_ids: typingMemberIds,
             },
           }));
-          setPresenceErrors((current) => ({ ...current, [channel.id]: "" }));
+          setPresenceErrors((current) => ({ ...current, [channelId]: "" }));
         }
       } catch (error) {
         if (active) {
           setPresenceErrors((current) => ({
             ...current,
-            [channel.id]:
+            [channelId]:
               error instanceof Error ? error.message : "Presence is temporarily unavailable.",
           }));
         }
+      } finally {
+        refreshing = false;
       }
     }
 
-    async function heartbeat(channel: ProjectChannelView) {
+    async function heartbeat() {
+      if (heartbeating) return;
+      heartbeating = true;
       try {
-        const response = await fetch(`/api/projects/${channel.project_id}/presence`, {
+        const response = await fetch(`/api/projects/${projectId}/presence`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ channel_id: channel.id }),
+          body: JSON.stringify({ channel_id: channelId }),
         });
         if (!response.ok) {
           const payload: unknown = await response.json();
@@ -238,70 +287,132 @@ export function TeamWorkspace({
         if (active) {
           setPresenceErrors((current) => ({
             ...current,
-            [channel.id]:
+            [channelId]:
               error instanceof Error ? error.message : "Presence is temporarily unavailable.",
           }));
         }
+      } finally {
+        heartbeating = false;
       }
     }
 
-    const refreshAll = () => {
-      for (const channel of activeChannels) void refreshPresence(channel);
-    };
-    const heartbeatAll = () => {
-      for (const channel of activeChannels) void heartbeat(channel);
-    };
-
-    for (const channel of activeChannels) {
-      void heartbeat(channel).then(() => refreshPresence(channel));
-    }
-    const refreshTimer = window.setInterval(refreshAll, 10_000);
-    const heartbeatTimer = window.setInterval(heartbeatAll, 20_000);
+    void heartbeat().then(refreshPresence);
+    const refreshTimer = window.setInterval(() => void refreshPresence(), 10_000);
+    const heartbeatTimer = window.setInterval(() => void heartbeat(), 20_000);
 
     return () => {
       active = false;
       window.clearInterval(refreshTimer);
       window.clearInterval(heartbeatTimer);
-      for (const channel of activeChannels) {
-        void fetch(
-          `/api/projects/${channel.project_id}/presence?channel_id=${channel.id}`,
-          { method: "DELETE", keepalive: true },
-        );
-      }
+      void fetch(
+        `/api/projects/${projectId}/presence?channel_id=${channelId}`,
+        { method: "DELETE", keepalive: true },
+      );
     };
-  }, [liveProjectChannels]);
+  }, [activeChannelId, liveProjectChannels]);
 
   useEffect(() => {
-    const timers = liveProjectChannels
-      .filter((channel) => channel.project_status === "active" && !channel.is_archived)
-      .map((channel) =>
-        window.setTimeout(() => {
-          void fetch(`/api/projects/${channel.project_id}/presence`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              channel_id: channel.id,
-              typing: Boolean(drafts[channel.id]?.trim()),
-            }),
-          }).then(async (response) => {
-            if (!response.ok) {
-              const payload: unknown = await response.json();
-              throw new Error(getErrorMessage(payload, "Typing status is unavailable."));
-            }
-          }).catch((error: unknown) => {
-            setPresenceErrors((current) => ({
-              ...current,
-              [channel.id]:
-                error instanceof Error ? error.message : "Typing status is unavailable.",
-            }));
-          });
-        }, 400),
-      );
+    const channel = liveProjectChannels.find((item) => item.id === activeChannelId);
+    if (!channel || channel.project_status !== "active" || channel.is_archived) return;
+    const projectId = channel.project_id;
+    const channelId = channel.id;
+
+    const timer = window.setTimeout(() => {
+      void fetch(`/api/projects/${projectId}/presence`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          channel_id: channelId,
+          typing: Boolean(drafts[channelId]?.trim()),
+        }),
+      }).then(async (response) => {
+        if (!response.ok) {
+          const payload: unknown = await response.json();
+          throw new Error(getErrorMessage(payload, "Typing status is unavailable."));
+        }
+      }).catch((error: unknown) => {
+        setPresenceErrors((current) => ({
+          ...current,
+          [channelId]:
+            error instanceof Error ? error.message : "Typing status is unavailable.",
+        }));
+      });
+    }, 400);
 
     return () => {
-      for (const timer of timers) window.clearTimeout(timer);
+      window.clearTimeout(timer);
     };
-  }, [drafts, liveProjectChannels]);
+  }, [activeChannelId, drafts, liveProjectChannels]);
+
+  async function loadChannelMessages(channel: ProjectChannelView, before?: string) {
+    setMessagePages((current) => ({
+      ...current,
+      [channel.id]: { ...current[channel.id], hasMore: current[channel.id]?.hasMore ?? false, nextCursor: current[channel.id]?.nextCursor ?? null, loading: true },
+    }));
+    setCollaborationErrors((current) => ({ ...current, [channel.id]: "" }));
+
+    try {
+      const cursor = before ? `&before=${encodeURIComponent(before)}` : "";
+      const response = await fetch(
+        `/api/projects/${channel.project_id}/messages?channel_id=${encodeURIComponent(channel.id)}${cursor}`,
+        { cache: "no-store" },
+      );
+      const payload: unknown = await response.json();
+      if (!response.ok) {
+        throw new Error(getErrorMessage(payload, "Project messages could not be loaded."));
+      }
+      if (
+        typeof payload !== "object" ||
+        payload === null ||
+        !("messages" in payload) ||
+        !Array.isArray(payload.messages) ||
+        !payload.messages.every(isProjectChannelMessage) ||
+        !("hasMore" in payload) ||
+        typeof payload.hasMore !== "boolean"
+      ) {
+        throw new Error("The project message response was invalid.");
+      }
+
+      const hasMore = payload.hasMore;
+      const nextCursor = "nextCursor" in payload && typeof payload.nextCursor === "string"
+        ? payload.nextCursor
+        : null;
+      const incoming = payload.messages;
+      setMessagesByChannel((current) => {
+        const existing = current[channel.id] ?? [];
+        const combined = before ? [...incoming, ...existing] : [...existing, ...incoming];
+        const unique = [...new Map(combined.map((message) => [message.id, message])).values()]
+          .sort((left, right) => left.created_at.localeCompare(right.created_at));
+        return { ...current, [channel.id]: unique };
+      });
+      setMessagePages((current) => ({
+        ...current,
+        [channel.id]: {
+          hasMore,
+          nextCursor,
+          loading: false,
+        },
+      }));
+    } catch (error) {
+      setCollaborationErrors((current) => ({
+        ...current,
+        [channel.id]: error instanceof Error ? error.message : "Project messages could not be loaded.",
+      }));
+      setMessagePages((current) => ({
+        ...current,
+        [channel.id]: { ...current[channel.id], loading: false },
+      }));
+    }
+  }
+
+  function toggleConversation(channel: ProjectChannelView) {
+    if (activeChannelId === channel.id) {
+      setActiveChannelId(null);
+      return;
+    }
+    setActiveChannelId(channel.id);
+    void loadChannelMessages(channel);
+  }
 
   async function sendMessage(channel: ProjectChannelView) {
     const body = (drafts[channel.id] ?? "").trim();
@@ -324,12 +435,30 @@ export function TeamWorkspace({
         return;
       }
 
+      if (
+        typeof payload !== "object" ||
+        payload === null ||
+        !("message" in payload) ||
+        typeof payload.message !== "object" ||
+        payload.message === null ||
+        !("id" in payload.message)
+      ) {
+        throw new Error("The project message response was invalid.");
+      }
+      if (!isProjectChannelMessage(payload.message)) {
+        throw new Error("The project message response was invalid.");
+      }
+      const savedMessage = payload.message;
+      setMessagesByChannel((current) => {
+        const messages = current[channel.id] ?? [];
+        if (messages.some((message) => message.id === savedMessage.id)) return current;
+        return { ...current, [channel.id]: [...messages, savedMessage] };
+      });
       setDrafts((currentDrafts) => ({ ...currentDrafts, [channel.id]: "" }));
-      router.refresh();
-    } catch {
+    } catch (error) {
       setCollaborationErrors((errors) => ({
         ...errors,
-        [channel.id]: "Could not reach the server. Please try again.",
+        [channel.id]: error instanceof Error ? error.message : "Could not reach the server. Please try again.",
       }));
     } finally {
       setSavingMessageChannelId(null);
@@ -635,6 +764,21 @@ export function TeamWorkspace({
           </div>
         )}
       </section>
+      {(channelPage > 1 || hasMoreChannels) && (
+        <nav className="admin-heading-row" aria-label="Project channel pages">
+          {channelPage > 1 ? (
+            <Link className="button-secondary" href={`/${scope === "admin" ? "admin" : "designer"}/team?page=${channelPage - 1}`}>
+              Previous channels
+            </Link>
+          ) : <span />}
+          <span>Page {channelPage}</span>
+          {hasMoreChannels && channelPage < 1000 ? (
+            <Link className="button-secondary" href={`/${scope === "admin" ? "admin" : "designer"}/team?page=${channelPage + 1}`}>
+              More channels
+            </Link>
+          ) : <span />}
+        </nav>
+      )}
 
       <section className="team-workspace-grid">
         <div className="team-panel">
@@ -678,7 +822,9 @@ export function TeamWorkspace({
             (scope === "admin" || channel.is_project_manager) &&
             channel.project_status === "active";
           const channelMembers = membersByProject[channel.project_id] ?? channel.members;
-          const channelMessages = messagesByChannel[channel.id] ?? channel.messages;
+          const channelMessages = messagesByChannel[channel.id] ?? [];
+          const messagePage = messagePages[channel.id];
+          const isConversationOpen = activeChannelId === channel.id;
           const channelPresence = presenceByChannel[channel.id];
           const typingNames = channelMembers
             .filter((member) => channelPresence?.typing_member_ids.includes(member.team_member_id))
@@ -695,7 +841,9 @@ export function TeamWorkspace({
                 <span>
                   {channel.is_archived
                     ? "Archived"
-                    : `${channelPresence?.online_member_ids.length ?? 0} online · ${channelMembers.length} members`}
+                    : isConversationOpen
+                      ? `${channelPresence?.online_member_ids.length ?? 0} online · ${channelMembers.length} members`
+                      : `${channelMembers.length} members`}
                 </span>
               </div>
               {typingNames.length > 0 && (
@@ -797,56 +945,82 @@ export function TeamWorkspace({
                 <p className="form-error" role="alert">{collaborationErrors[channel.project_id]}</p>
               )}
 
-              <div className="channel-thread" aria-live="polite">
-                {channelMessages.length ? (
-                  channelMessages.map((message) => (
-                    <div key={message.id} className="chat-message">
-                      <div className="message-meta">
-                        <strong>{message.sender_name}</strong>
-                        {message.sender_role && <span>{message.sender_role}</span>}
-                        <time dateTime={message.created_at}>
-                          {new Date(message.created_at).toLocaleString()}
-                        </time>
-                      </div>
-                      <p>{message.body}</p>
+              <button
+                className="button-secondary"
+                type="button"
+                aria-expanded={isConversationOpen}
+                onClick={() => toggleConversation(channel)}
+              >
+                {isConversationOpen ? "Close conversation" : "Open conversation"}
+              </button>
+              {isConversationOpen && (
+                <>
+                  {messagePage?.hasMore && messagePage.nextCursor && (
+                    <button
+                      className="button-secondary"
+                      type="button"
+                      onClick={() => void loadChannelMessages(channel, messagePage.nextCursor ?? undefined)}
+                      disabled={messagePage.loading}
+                    >
+                      {messagePage.loading ? "Loading…" : "Load older messages"}
+                    </button>
+                  )}
+                  {messagePage?.loading && channelMessages.length === 0 ? (
+                    <p className="loading-state" role="status">Loading conversation…</p>
+                  ) : (
+                    <div className="channel-thread" aria-live="polite">
+                      {channelMessages.length ? (
+                        channelMessages.map((message) => (
+                          <div key={message.id} className="chat-message">
+                            <div className="message-meta">
+                              <strong>{message.sender_name}</strong>
+                              {message.sender_role && <span>{message.sender_role}</span>}
+                              <time dateTime={message.created_at}>
+                                {new Date(message.created_at).toLocaleString()}
+                              </time>
+                            </div>
+                            <p>{message.body}</p>
+                          </div>
+                        ))
+                      ) : (
+                        <p className="empty-state">No messages yet. Start the project conversation.</p>
+                      )}
                     </div>
-                  ))
-                ) : (
-                  <p className="empty-state">No messages yet. Start the project conversation.</p>
-                )}
-              </div>
+                  )}
 
-              {channel.project_status === "active" ? (
-                <form
-                  className="chat-composer"
-                  onSubmit={(event) => {
-                    event.preventDefault();
-                    void sendMessage(channel);
-                  }}
-                >
-                  <input
-                    aria-label={`Message ${channel.channel_name}`}
-                    value={drafts[channel.id] ?? ""}
-                    maxLength={2000}
-                    onChange={(event) =>
-                      setDrafts((currentDrafts) => ({
-                        ...currentDrafts,
-                        [channel.id]: event.target.value,
-                      }))
-                    }
-                    disabled={savingMessageChannelId === channel.id}
-                    placeholder={`Message ${channel.channel_name}…`}
-                  />
-                  <button
-                    className="button-primary"
-                    type="submit"
-                    disabled={savingMessageChannelId === channel.id || !drafts[channel.id]?.trim()}
-                  >
-                    Send
-                  </button>
-                </form>
-              ) : (
-                <p className="empty-state">This completed project channel is read-only.</p>
+                  {channel.project_status === "active" ? (
+                    <form
+                      className="chat-composer"
+                      onSubmit={(event) => {
+                        event.preventDefault();
+                        void sendMessage(channel);
+                      }}
+                    >
+                      <input
+                        aria-label={`Message ${channel.channel_name}`}
+                        value={drafts[channel.id] ?? ""}
+                        maxLength={2000}
+                        onChange={(event) =>
+                          setDrafts((currentDrafts) => ({
+                            ...currentDrafts,
+                            [channel.id]: event.target.value,
+                          }))
+                        }
+                        disabled={savingMessageChannelId === channel.id}
+                        placeholder={`Message ${channel.channel_name}…`}
+                      />
+                      <button
+                        className="button-primary"
+                        type="submit"
+                        disabled={savingMessageChannelId === channel.id || !drafts[channel.id]?.trim()}
+                      >
+                        Send
+                      </button>
+                    </form>
+                  ) : (
+                    <p className="empty-state">This completed project channel is read-only.</p>
+                  )}
+                </>
               )}
               {collaborationErrors[channel.id] && (
                 <p className="form-error" role="alert">{collaborationErrors[channel.id]}</p>

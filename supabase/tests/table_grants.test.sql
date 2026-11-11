@@ -59,17 +59,17 @@ SELECT ok(
 );
 
 SELECT ok(
-  has_column_privilege('authenticated', 'public.project_request_logs', 'inquiry_id', 'INSERT')
-  AND has_column_privilege('authenticated', 'public.project_request_logs', 'status', 'INSERT')
+  NOT has_column_privilege('authenticated', 'public.project_request_logs', 'inquiry_id', 'INSERT')
+  AND NOT has_column_privilege('authenticated', 'public.project_request_logs', 'status', 'INSERT')
   AND NOT has_column_privilege('authenticated', 'public.project_request_logs', 'created_at', 'INSERT'),
-  'request-log inserts do not allow caller-controlled timestamps'
+  'authenticated users cannot insert legacy request-log records'
 );
 
 SELECT ok(
-  has_column_privilege('authenticated', 'public.company_expenses', 'contributor_name', 'INSERT')
-  AND has_column_privilege('authenticated', 'public.company_expenses', 'contributor_amount', 'INSERT')
+  NOT has_column_privilege('authenticated', 'public.company_expenses', 'contributor_name', 'INSERT')
+  AND NOT has_column_privilege('authenticated', 'public.company_expenses', 'contributor_amount', 'INSERT')
   AND NOT has_column_privilege('authenticated', 'public.company_expenses', 'updated_at', 'INSERT'),
-  'expense inserts are limited to explicitly granted columns'
+  'authenticated users cannot insert legacy expense records'
 );
 
 SELECT ok(
@@ -100,6 +100,16 @@ VALUES (
   'Grant Test Designer',
   'grant-designer@example.test'
 );
+
+UPDATE public.inquiries
+SET status = 'accepted'
+WHERE email = 'grant-test@example.test';
+
+INSERT INTO public.project_members (project_id, team_member_id, role_name)
+SELECT projects.id, '20000000-0000-0000-0000-000000000091', 'DESIGNER'
+FROM public.projects
+JOIN public.inquiries ON inquiries.id = projects.inquiry_id
+WHERE inquiries.email = 'grant-test@example.test';
 
 INSERT INTO public.project_messages (inquiry_id, sender_type, sender_name, body)
 SELECT id, 'team', 'Seed', 'Seed message'

@@ -1,7 +1,10 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { z } from "zod";
 import { DesignerProjectRoom } from "@/components/designer/designer-project-room";
 import { requireDesigner } from "@/lib/auth/require-designer";
+
+const InquiryIdSchema = z.string().uuid();
 
 export default async function DesignerRequestPage({
   params,
@@ -15,6 +18,37 @@ export default async function DesignerRequestPage({
   }
 
   const { id } = await params;
+  if (!InquiryIdSchema.safeParse(id).success) {
+    return (
+      <main className="admin-main">
+        <Link className="detail-back" href="/designer">← Back to dashboard</Link>
+        <p className="empty-state">This request is unavailable or is not assigned to you.</p>
+      </main>
+    );
+  }
+
+  const { data: canAccessInquiry, error: accessError } = await authorization.supabase.rpc(
+    "can_access_inquiry_project",
+    { p_inquiry_id: id },
+  );
+  if (accessError) {
+    console.error("Designer request assignment could not be verified.", accessError.message);
+    return (
+      <main className="admin-main">
+        <Link className="detail-back" href="/designer">← Back to dashboard</Link>
+        <p className="form-error" role="alert">This request is temporarily unavailable.</p>
+      </main>
+    );
+  }
+  if (!canAccessInquiry) {
+    return (
+      <main className="admin-main">
+        <Link className="detail-back" href="/designer">← Back to dashboard</Link>
+        <p className="empty-state">This request is unavailable or is not assigned to you.</p>
+      </main>
+    );
+  }
+
   const { data: inquiry, error } = await authorization.supabase
     .from("inquiries")
     .select("id, name, email, company, service, project_brief, budget_range, timeline, status, created_at, updated_at")

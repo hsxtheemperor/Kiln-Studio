@@ -32,29 +32,33 @@ export type ProjectChannelMemberView = Pick<
   Pick<TeamMemberRow, "full_name" | "email">;
 
 type ProjectChannelResult =
-  | { channels: ProjectChannelView[]; error: null }
-  | { channels: []; error: string };
+  | { channels: ProjectChannelView[]; hasMore: boolean; error: null }
+  | { channels: []; hasMore: false; error: string };
 
 export async function getProjectChannels(
   supabase: SessionClient,
   userId: string,
+  offset = 0,
 ): Promise<ProjectChannelResult> {
   const { data: channelRows, error: channelError } = await supabase.rpc(
     "list_project_channels",
+    { p_limit: 51, p_offset: offset },
   );
   if (channelError) {
     console.error("Ordered project channels could not be loaded.", channelError.message);
-    return { channels: [], error: "Project channels are temporarily unavailable." };
+    return { channels: [], hasMore: false, error: "Project channels are temporarily unavailable." };
   }
 
   if (!channelRows?.length) {
-    return { channels: [], error: null };
+    return { channels: [], hasMore: false, error: null };
   }
 
-  const projectIds = channelRows.flatMap((channel) =>
+  const hasMore = channelRows.length > 50;
+  const pageRows = channelRows.slice(0, 50);
+  const projectIds = pageRows.flatMap((channel) =>
     channel.project_id ? [channel.project_id] : [],
   );
-  const inquiryIds = channelRows.flatMap((channel) =>
+  const inquiryIds = pageRows.flatMap((channel) =>
     channel.inquiry_id ? [channel.inquiry_id] : [],
   );
 
@@ -78,14 +82,14 @@ export async function getProjectChannels(
   const queryError = projectsError ?? inquiryError ?? memberError;
   if (queryError) {
     console.error("Project channel details could not be loaded.", queryError.message);
-    return { channels: [], error: "Project channel details are temporarily unavailable." };
+    return { channels: [], hasMore: false, error: "Project channel details are temporarily unavailable." };
   }
 
   const projectById = new Map((projects ?? []).map((project) => [project.id, project]));
   const priorityByInquiry = new Map((inquiries ?? []).map((inquiry) => [inquiry.id, inquiry.priority_score]));
 
   const mappedChannels: ProjectChannelView[] = [];
-  for (const channel of channelRows) {
+  for (const channel of pageRows) {
     if (!channel.project_id || !channel.inquiry_id) continue;
     const project = projectById.get(channel.project_id);
     if (!project) continue;
@@ -113,7 +117,7 @@ export async function getProjectChannels(
 
   if (projectMembersError) {
     console.error("Project channel memberships could not be loaded.", projectMembersError.message);
-    return { channels: [], error: "Project channel memberships are temporarily unavailable." };
+    return { channels: [], hasMore: false, error: "Project channel memberships are temporarily unavailable." };
   }
 
   const memberIds = [...new Set((projectMembers ?? []).map((member) => member.team_member_id))];
@@ -126,7 +130,7 @@ export async function getProjectChannels(
 
   if (teamMembersError) {
     console.error("Project channel member details could not be loaded.", teamMembersError.message);
-    return { channels: [], error: "Project channel members are temporarily unavailable." };
+    return { channels: [], hasMore: false, error: "Project channel members are temporarily unavailable." };
   }
 
   const teamMemberById = new Map((teamMembers ?? []).map((member) => [member.id, member]));
@@ -145,38 +149,13 @@ export async function getProjectChannels(
     membersByProject.set(membership.project_id, members);
   }
 
-  const channelMessages = await Promise.all(
-    mappedChannels.map(async (channel) => {
-      const { data, error } = await supabase
-        .from("project_channel_messages")
-        .select("id, channel_id, sender_member_id, sender_name, sender_role, body, message_source, created_at")
-        .eq("channel_id", channel.id)
-        .order("created_at", { ascending: false })
-        .limit(100);
-      return { channelId: channel.id, messages: data ?? [], error };
-    }),
-  );
-
-  const messageError = channelMessages.find((result) => result.error)?.error;
-  if (messageError) {
-    console.error("Project channel messages could not be loaded.", messageError.message);
-    return { channels: [], error: "Project channel messages are temporarily unavailable." };
-  }
-
-  const messagesByChannel = new Map(
-    channelMessages.map((result) => [
-      result.channelId,
-      [...result.messages].reverse(),
-    ]),
-  );
-
   for (const channel of mappedChannels) {
     channel.members = membersByProject.get(channel.project_id) ?? [];
-    channel.messages = messagesByChannel.get(channel.id) ?? [];
   }
 
   return {
     channels: mappedChannels,
+    hasMore,
     error: null,
   };
 }

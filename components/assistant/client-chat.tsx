@@ -56,8 +56,12 @@ export function ClientChat({ compact = false }: { compact?: boolean }) {
 
       const requestId = startPayload.requestId;
       const deadline = Date.now() + 30_000;
+      let pollDelay = 500;
       while (Date.now() < deadline) {
-        await new Promise((resolve) => window.setTimeout(resolve, 1_000));
+        await new Promise((resolve) =>
+          window.setTimeout(resolve, Math.min(pollDelay, deadline - Date.now())),
+        );
+        if (Date.now() >= deadline) break;
         const resultResponse = await fetch(
           `/api/client-chat?id=${encodeURIComponent(requestId)}`,
           { cache: "no-store" },
@@ -82,6 +86,7 @@ export function ClientChat({ compact = false }: { compact?: boolean }) {
           setMessages((current) => [...current, { role: "assistant", text: answer }]);
           return;
         }
+        pollDelay = Math.min(pollDelay * 2, 5_000);
       }
       throw new Error("The assistant is taking longer than expected. Please try again.");
     } catch (submitError) {

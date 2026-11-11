@@ -80,8 +80,8 @@ Next.js route groups organize layouts without adding URL prefixes.
 | `components/admin/admin-frame.tsx` | Admin shell/navigation and sign-out UI. |
 | `components/admin/activity-feed.tsx` | Admin-only initial activity list and live Supabase Realtime subscription, rendered with RLS-protected session data. |
 | `components/admin/inquiry-inbox.tsx`, `inquiry-detail.tsx` | Inquiry list/filter/pagination and status update UI. |
-| `components/team/team-workspace.tsx` | Active team directory, project membership management, persisted project-channel conversations, and ephemeral presence indicators. |
-| `components/designer/designer-project-room.tsx` | Designer/client-request message interface. |
+| `components/team/team-workspace.tsx` | Active team directory, project membership management, on-demand paginated project conversations, and presence for the open channel only. |
+| `components/designer/designer-project-room.tsx` | Assignment-scoped designer/client-request messages with older-history pagination. |
 
 ### API and shared server logic
 
@@ -98,13 +98,13 @@ Next.js route groups organize layouts without adding URL prefixes.
 | `app/api/admin/auth/route.ts` | Studio-member sign-in/sign-out. |
 | `app/api/designer/auth/route.ts` | Designer/studio-member sign-in gate. |
 | `app/api/admin/inquiries/route.ts`, `[id]/route.ts` | Protected inquiry list/detail and status/priority updates. |
-| `app/api/designer/messages/route.ts` | Protected inquiry-linked designer message reads/writes. |
+| `app/api/designer/messages/route.ts` | Assignment-authorized, rate-limited designer message reads/writes with 50-message pagination. |
 | `app/api/projects/[id]/members/route.ts` | Adds and removes project team members using the authenticated session; RLS authorizes administrators/project managers. |
-| `app/api/projects/[id]/messages/route.ts` | Persists project-channel messages with sender identity derived from the authenticated team profile. |
+| `app/api/projects/[id]/messages/route.ts` | Reads bounded project-channel message pages and persists new messages with sender identity derived from the authenticated team profile. |
 | `app/api/projects/[id]/presence/route.ts` | Exposes project-member-only online and typing state using short-lived Upstash Redis keys. |
 | `app/api/slack/deliver/route.ts` | Verifies QStash delivery signatures, atomically claims one outbox row, and sends that message to Slack with a stable provider dedupe ID. |
 | `app/api/slack/sync/route.ts` | Processes the authenticated Slack project-channel, membership-reconciliation, and recovery outbox jobs. |
-| `lib/studio/project-channels.ts` | Loads RLS-filtered ordered project channels, current memberships, and recent channel messages. |
+| `lib/studio/project-channels.ts` | Loads a bounded page of RLS-filtered project channels and memberships; message history is fetched only when opened. |
 | `lib/inquiries/schema.ts` | Inquiry options, validation, normalization, and database insert mapping. |
 | `lib/inquiries/reference-files.ts`, `reference-queue.ts` | Image constraints, content verification, and QStash delivery with local inline fallback. |
 | `lib/inquiries/similarity.ts`, `similarity-queue.ts` | Builds approved inquiry text, requests embeddings, stores/query vectors, and triggers consent-gated Workflow processing. |
@@ -148,7 +148,8 @@ Next.js route groups organize layouts without adding URL prefixes.
 | `supabase/migrations/20261111000000_add_customer_support_messages.sql` | Adds a service-role-only table for customer-support Q&A curation without separate account/IP metadata; submitted text is not scrubbed. |
 | `supabase/migrations/20261111010000_allow_idempotent_support_message_upserts.sql` | Grants the service role SELECT on only the Q&A request idempotency key required for retry-safe upserts. |
 | `supabase/migrations/20261111020000_claim_slack_outbox_message.sql` | Adds atomic per-message Slack outbox claims for QStash delivery and concurrent retry safety. |
-| `supabase/tests/` | pgTAP coverage for inquiry priority/atomic writes, reference-file access and linking, project lifecycle and RLS, finance/report behavior, grants, team roles, channel rules, and support-message privacy/idempotency. |
+| `supabase/migrations/20261112000000_scope_designer_access_and_bound_workspace_reads.sql` | Adds a minimal designer queue projection, assignment-scoped inquiry/brief/message policies, studio-only legacy finance reads, and paginates project channels. |
+| `supabase/tests/` | pgTAP coverage for inquiry priority/atomic writes, reference-file access and linking, project lifecycle and RLS, designer assignment boundaries, finance/report behavior, grants, team roles, channel rules, and support-message privacy/idempotency. |
 | `.github/workflows/ci.yml` | Runs application tests, QStash/Workflow-focused checks, typecheck/build, and clean local Supabase migration, lint, and pgTAP checks on pull requests and all pushes; no deployment. |
 | `lib/supabase/database.types.ts` | Application-side Supabase row/insert types. |
 | `tests/unit/`, `tests/lib/`, `tests/api/` | Focused validation, priority, upload/queue, similarity, and API/auth tests. |
@@ -169,8 +170,9 @@ Next.js route groups organize layouts without adding URL prefixes.
 
 **Connected to backend:** public inquiry and brief persistence, inquiry priority,
 client account/profile flows, admin inquiry reads and status/priority updates,
-and designer inquiry messaging (subject to the deployed Supabase policies and
-configuration).
+and assignment-scoped designer inquiry messaging (requires migration
+`20261112000000_scope_designer_access_and_bound_workspace_reads.sql` in the
+target Supabase environment).
 
 **Inquiry similarity:** clients may explicitly opt in to similarity processing.
 Only approved design-brief text is sent for embedding; Upstash Vector stores

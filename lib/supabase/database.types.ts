@@ -800,8 +800,25 @@ export type Database = {
         Returns: string;
       };
       list_project_channels: {
-        Args: Record<PropertyKey, never>;
+        Args: {
+          p_limit?: number;
+          p_offset?: number;
+        };
         Returns: ProjectChannelRow[];
+      };
+      can_access_inquiry_project: {
+        Args: { p_inquiry_id: string };
+        Returns: boolean;
+      };
+      get_designer_priority_queue: {
+        Args: Record<PropertyKey, never>;
+        Returns: {
+          inquiry_id: string;
+          priority_score: number;
+          status: string;
+          service: string | null;
+          created_at: string;
+        }[];
       };
       claim_slack_project_sync_jobs: {
         Args: { p_limit?: number };

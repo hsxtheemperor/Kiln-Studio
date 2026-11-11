@@ -81,6 +81,10 @@ export async function GET(_request: Request, { params }: RouteContext) {
 
   if (briefError) {
     console.error("Admin inquiry priority detail could not be loaded.", briefError.message);
+    return NextResponse.json(
+      { error: "Inquiry priority details are temporarily unavailable." },
+      { status: 503, headers: { "Cache-Control": "no-store" } },
+    );
   }
 
   const parsedMatches = readSimilarityMatches(data.similarity_matches)

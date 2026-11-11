@@ -17,14 +17,22 @@ export function DesignerProjectRoom({ inquiryId }: { inquiryId: string }) {
   const [draft, setDraft] = useState("");
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingOlder, setIsLoadingOlder] = useState(false);
   const [isSending, setIsSending] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
 
-  async function loadMessages() {
-    setIsLoading(true);
+  async function loadMessages(before?: string) {
+    if (before) setIsLoadingOlder(true);
+    else setIsLoading(true);
     setError("");
 
     try {
-      const response = await fetch(`/api/designer/messages?inquiry_id=${inquiryId}`, { cache: "no-store" });
+      const cursor = before ? `&before=${encodeURIComponent(before)}` : "";
+      const response = await fetch(
+        `/api/designer/messages?inquiry_id=${encodeURIComponent(inquiryId)}${cursor}`,
+        { cache: "no-store" },
+      );
       const payload: unknown = await response.json();
 
       if (!response.ok) {
@@ -36,12 +44,26 @@ export function DesignerProjectRoom({ inquiryId }: { inquiryId: string }) {
         return;
       }
 
-      const list = Array.isArray((payload as { messages?: Message[] })?.messages) ? (payload as { messages: Message[] }).messages : [];
-      setMessages(list);
+      if (typeof payload !== "object" || payload === null || !("messages" in payload)) {
+        throw new Error("The message feed returned an invalid response.");
+      }
+      const result = payload as {
+        messages?: unknown;
+        hasMore?: unknown;
+        nextCursor?: unknown;
+      };
+      const list = Array.isArray(result.messages) ? result.messages as Message[] : null;
+      if (!list || typeof result.hasMore !== "boolean") {
+        throw new Error("The message feed returned an invalid response.");
+      }
+      setMessages((current) => before ? [...list, ...current] : list);
+      setHasMore(result.hasMore);
+      setNextCursor(typeof result.nextCursor === "string" ? result.nextCursor : null);
     } catch {
       setError("The message feed could not be reached.");
     } finally {
-      setIsLoading(false);
+      if (before) setIsLoadingOlder(false);
+      else setIsLoading(false);
     }
   }
 
@@ -77,10 +99,13 @@ export function DesignerProjectRoom({ inquiryId }: { inquiryId: string }) {
 
       const message = (payload as { message?: Message }).message;
       if (message) {
-        setMessages((currentMessages) => [...currentMessages, message]);
+        setMessages((currentMessages) =>
+          currentMessages.some((current) => current.id === message.id)
+            ? currentMessages
+            : [...currentMessages, message],
+        );
       }
       setDraft("");
-      await loadMessages();
     } catch {
       setError("The message could not be sent right now.");
     } finally {
@@ -101,6 +126,16 @@ export function DesignerProjectRoom({ inquiryId }: { inquiryId: string }) {
         <p className="loading-state" role="status">Loading messages…</p>
       ) : (
         <div className="designer-message-list">
+          {hasMore && nextCursor && (
+            <button
+              className="button-secondary"
+              type="button"
+              onClick={() => void loadMessages(nextCursor)}
+              disabled={isLoadingOlder}
+            >
+              {isLoadingOlder ? "Loading…" : "Load older messages"}
+            </button>
+          )}
           {messages.length === 0 && <p className="empty-state">No messages yet for this request.</p>}
           {messages.map((message) => (
             <div key={message.id} className={`designer-message ${message.sender_type === "designer" ? "designer" : "team"}`}>

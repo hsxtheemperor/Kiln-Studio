@@ -483,6 +483,7 @@ Kiln-Studio project.
 | Policy | Command | Roles | Action | USING | WITH CHECK |
 |--------|---------|-------|--------|-------|------------|
 | `Studio members can read inquiries` | SELECT | authenticated | PERMISSIVE | `(((auth.jwt() -> 'app_metadata'::text) ->> 'access_level'::text) = 'studio_member'::text)` | — |
+| `inquiries_select_for_assigned_designers` | SELECT | authenticated | PERMISSIVE | Designers may read only inquiries authorized by `can_access_inquiry_project(id)`. | — |
 | `Studio members can update inquiry status` | UPDATE | authenticated | PERMISSIVE | `(((auth.jwt() -> 'app_metadata'::text) ->> 'access_level'::text) = 'studio_member'::text)` | `(((auth.jwt() -> 'app_metadata'::text) ->> 'access_level'::text) = 'studio_member'::text)` |
 | `Clients can read their own inquiries` | SELECT | authenticated | PERMISSIVE | `((((auth.jwt() -> 'app_metadata'::text) ->> 'access_level'::text) = 'client'::text) AND (client_id IS NOT NULL) AND (client_id IN ( SELECT cp.id    FROM client_profiles cp   WHERE (cp.user_id = auth.uid()))))` | — |
 | `Clients can insert their own inquiries` | INSERT | authenticated | PERMISSIVE | — | `((((auth.jwt() -> 'app_metadata'::text) ->> 'access_level'::text) = 'client'::text) AND (client_id IS NOT NULL) AND (client_id IN ( SELECT cp.id    FROM client_profiles cp   WHERE (cp.user_id = auth.uid()))))` |
@@ -507,7 +508,7 @@ Kiln-Studio project.
 
 | Policy | Command | Roles | Action | USING | WITH CHECK |
 |--------|---------|-------|--------|-------|------------|
-| `project_briefs_select_for_authenticated` | SELECT | authenticated | PERMISSIVE | `((((auth.jwt() -> 'app_metadata'::text) ->> 'access_level'::text) = ANY (ARRAY['studio_member'::text, 'designer'::text])) OR ((auth.jwt() ->> 'role'::text) = ANY (ARRAY['studio_member'::text, 'designer'::text])))` | — |
+| `project_briefs_select_for_studio_or_assigned_designers` | SELECT | authenticated | PERMISSIVE | Studio members or designers assigned through `project_members`. | — |
 | `project_briefs_insert_for_service_role` | INSERT | service_role | PERMISSIVE | — | `true` |
 | `project_briefs_update_for_service_role` | UPDATE | service_role | PERMISSIVE | `true` | `true` |
 
@@ -515,14 +516,14 @@ Kiln-Studio project.
 
 | Policy | Command | Roles | Action | USING | WITH CHECK |
 |--------|---------|-------|--------|-------|------------|
-| `projects_select_for_studio` | SELECT | authenticated | PERMISSIVE | `((auth.uid() IS NOT NULL) AND (COALESCE(((auth.jwt() -> 'app_metadata'::text) ->> 'access_level'::text), (auth.jwt() ->> 'role'::text)) = ANY (ARRAY['studio_member'::text, 'designer'::text])))` | — |
+| `projects_select_for_studio` | SELECT | authenticated | PERMISSIVE | Studio members or designers assigned to the linked inquiry. | — |
 | `projects_update_for_admin_or_pm` | UPDATE | authenticated | PERMISSIVE | `((((auth.jwt() -> 'app_metadata'::text) ->> 'access_level'::text) = 'studio_member'::text) OR is_project_manager(id))` | `((((auth.jwt() -> 'app_metadata'::text) ->> 'access_level'::text) = 'studio_member'::text) OR is_project_manager(id))` |
 
 ### `project_members`
 
 | Policy | Command | Roles | Action | USING | WITH CHECK |
 |--------|---------|-------|--------|-------|------------|
-| `project_members_select_for_studio` | SELECT | authenticated | PERMISSIVE | `((auth.uid() IS NOT NULL) AND (COALESCE(((auth.jwt() -> 'app_metadata'::text) ->> 'access_level'::text), (auth.jwt() ->> 'role'::text)) = ANY (ARRAY['studio_member'::text, 'designer'::text])))` | — |
+| `project_members_select_for_studio` | SELECT | authenticated | PERMISSIVE | Studio members or designers assigned to the project. | — |
 | `project_members_delete_for_admin_or_pm` | DELETE | authenticated | PERMISSIVE | `((role_name <> 'PROJECT_MANAGER'::text) AND ((((auth.jwt() -> 'app_metadata'::text) ->> 'access_level'::text) = 'studio_member'::text) OR is_project_manager(project_id)))` | — |
 | `project_members_insert_for_admin_or_pm` | INSERT | authenticated | PERMISSIVE | — | `((role_name <> 'PROJECT_MANAGER'::text) AND (EXISTS ( SELECT 1    FROM projects   WHERE ((projects.id = project_members.project_id) AND (projects.status = 'active'::text)))) AND ((((( SELECT auth.jwt() AS jwt) -> 'app_metadata'::text) ->> 'access_level'::text) = 'studio_member'::text) OR is_project_manager(project_id)))` |
 | `project_members_update_for_admin_or_pm` | UPDATE | authenticated | PERMISSIVE | `((role_name <> 'PROJECT_MANAGER'::text) AND (EXISTS ( SELECT 1    FROM projects   WHERE ((projects.id = project_members.project_id) AND (projects.status = 'active'::text)))) AND ((((( SELECT auth.jwt() AS jwt) -> 'app_metadata'::text) ->> 'access_level'::text) = 'studio_member'::text) OR is_project_manager(project_id)))` | `((role_name <> 'PROJECT_MANAGER'::text) AND (EXISTS ( SELECT 1    FROM projects   WHERE ((projects.id = project_members.project_id) AND (projects.status = 'active'::text)))) AND ((((( SELECT auth.jwt() AS jwt) -> 'app_metadata'::text) ->> 'access_level'::text) = 'studio_member'::text) OR is_project_manager(project_id)))` |
@@ -556,28 +557,26 @@ Kiln-Studio project.
 
 | Policy | Command | Roles | Action | USING | WITH CHECK |
 |--------|---------|-------|--------|-------|------------|
-| `project_assignments_select_for_studio` | SELECT | authenticated | PERMISSIVE | `(((( SELECT auth.jwt() AS jwt) -> 'app_metadata'::text) ->> 'access_level'::text) = ANY (ARRAY['designer'::text, 'studio_member'::text]))` | — |
+| `project_assignments_select_for_studio` | SELECT | authenticated | PERMISSIVE | Studio members only; legacy assignment rows are not used by designer pages. | — |
 
 ### `project_messages`
 
 | Policy | Command | Roles | Action | USING | WITH CHECK |
 |--------|---------|-------|--------|-------|------------|
-| `project_messages_select_for_designers` | SELECT | authenticated | PERMISSIVE | `(((( SELECT auth.jwt() AS jwt) -> 'app_metadata'::text) ->> 'access_level'::text) = ANY (ARRAY['designer'::text, 'studio_member'::text]))` | — |
-| `project_messages_insert_for_designers` | INSERT | authenticated | PERMISSIVE | — | `(((((auth.jwt() -> 'app_metadata'::text) ->> 'access_level'::text) = 'designer'::text) AND (sender_type = 'designer'::text) AND (sender_id = auth.uid())) OR ((((auth.jwt() -> 'app_metadata'::text) ->> 'access_level'::text) = 'studio_member'::text) AND (sender_type = 'team'::text) AND (sender_id = auth.uid())))` |
+| `project_messages_select_for_designers` | SELECT | authenticated | PERMISSIVE | Studio members, or designers for inquiries authorized by `can_access_inquiry_project(inquiry_id)`. | — |
+| `project_messages_insert_for_designers` | INSERT | authenticated | PERMISSIVE | — | Studio members, or assigned designers; sender type and identity are checked separately. |
 
 ### `project_request_logs`
 
 | Policy | Command | Roles | Action | USING | WITH CHECK |
 |--------|---------|-------|--------|-------|------------|
-| `project_request_logs_select_for_designers` | SELECT | authenticated | PERMISSIVE | `(((( SELECT auth.jwt() AS jwt) -> 'app_metadata'::text) ->> 'access_level'::text) = ANY (ARRAY['designer'::text, 'studio_member'::text]))` | — |
-| `project_request_logs_insert_for_designers` | INSERT | authenticated | PERMISSIVE | — | `(((( SELECT auth.jwt() AS jwt) -> 'app_metadata'::text) ->> 'access_level'::text) = ANY (ARRAY['designer'::text, 'studio_member'::text]))` |
+| `project_request_logs_select_for_studio` | SELECT | authenticated | PERMISSIVE | Studio members only. | — |
 
 ### `company_expenses`
 
 | Policy | Command | Roles | Action | USING | WITH CHECK |
 |--------|---------|-------|--------|-------|------------|
-| `company_expenses_select_for_designers` | SELECT | authenticated | PERMISSIVE | `(((( SELECT auth.jwt() AS jwt) -> 'app_metadata'::text) ->> 'access_level'::text) = ANY (ARRAY['designer'::text, 'studio_member'::text]))` | — |
-| `company_expenses_insert_for_designers` | INSERT | authenticated | PERMISSIVE | — | `(((( SELECT auth.jwt() AS jwt) -> 'app_metadata'::text) ->> 'access_level'::text) = ANY (ARRAY['designer'::text, 'studio_member'::text]))` |
+| `company_expenses_select_for_studio` | SELECT | authenticated | PERMISSIVE | Studio members only. | — |
 
 ### `system_activity_logs`
 
@@ -905,10 +904,14 @@ Projects start `active`. Only the assigned PM can change a project to
 archived channel rejects new channel messages but stays readable to existing
 members. A completed project cannot be reopened.
 
-`list_project_channels()` runs with the
+`list_project_channels(p_limit, p_offset)` runs with the
 caller's RLS context and returns project channels ordered by: active before
 archived, then priority descending, then deadline ascending with missing
-deadlines last, then newest channel first.
+deadlines last, then newest channel first. Its bounded `p_limit` and `p_offset`
+arguments support channel pagination. Designers receive a minimal priority
+queue from `get_designer_priority_queue()`; inquiry details and extended briefs
+are available only to studio members and designers assigned through
+`project_members`, enforced by `can_access_inquiry_project()`.
 
 ## Audit trail (system activity)
 
@@ -1209,10 +1212,11 @@ channel synchronization, and project-channel history filtered to current
 channel members. Migration 15 limits membership additions and role changes to
 active projects while allowing removals from completed projects so access can
 be revoked. Membership changes are permitted to the project's PM for their own
-project or to a studio admin. The Team UI loads live team members, memberships,
-and recent project messages; its authenticated routes write messages and add or
-remove members through RLS-protected sessions. Project messages show the latest
-100 rows per visible channel. The Team page also exposes admin PM assignment,
+project or to a studio admin. The Team UI loads live team members and memberships; it fetches project-message
+history only when a conversation is opened, 50 rows at a time, and subscribes to
+Realtime only for that open channel. Channel pages show at most 50 projects.
+Authenticated routes write messages and add or remove members through
+RLS-protected sessions. The Team page also exposes admin PM assignment,
 deadline editing, project membership management, and PM-only completion. The
 admin dashboard displays recent system activity and subscribes to new audit
 events. Finance has database tables, access policies, totals, and publishing
@@ -1229,8 +1233,8 @@ Known limitations, verified against the committed SQL:
   channel" is true for designers only.
 - **Legacy finance tables remain.** `project_request_logs` and
   `company_expenses` predate normalized finance. Their data has not been
-  migrated or dropped; do not use them for new financial entries. Review their
-  grants/policies separately before exposing them to real users.
+  migrated or dropped; do not use them for new financial entries. Studio
+  members alone can read them; authenticated inserts are revoked.
 - **Finance operations are database-only.** New finance and report tables are
   restricted to studio members, and designers cannot read them. The current
   application only provides a read-only overview; no finance write workflow
@@ -1270,6 +1274,9 @@ verify:
 - Project channels and their message history are unavailable to non-member
   **designers**; studio members see all project channels (see known
   limitations). Archived project channels remain read-only for current members.
+- Designer inquiry details, briefs, and legacy messages are assignment-scoped;
+  the priority queue contains only inquiry id, service, status, score, and
+  creation time before assignment.
   General, Announcements and System are visible to all studio members.
 - Only the assigned PM can complete a project; completion stamps the time,
   archives the project channel, blocks additional channel messages, and retains

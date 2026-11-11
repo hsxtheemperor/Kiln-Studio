@@ -4,16 +4,26 @@ import { TeamWorkspace } from "@/components/team/team-workspace";
 import { getProjectChannels } from "@/lib/studio/project-channels";
 import { requireDesigner } from "@/lib/auth/require-designer";
 
-export default async function DesignerTeamPage() {
+export default async function DesignerTeamPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ page?: string }>;
+}) {
   const authorization = await requireDesigner();
 
   if (!authorization.authorized) {
     redirect("/designer/sign-in");
   }
 
-  const { channels: projectChannels, error } = await getProjectChannels(
+  const { page: pageParam } = await searchParams;
+  const requestedPage = Number(pageParam ?? "1");
+  const page = Number.isSafeInteger(requestedPage) && requestedPage >= 1 && requestedPage <= 1000
+    ? requestedPage
+    : 1;
+  const { channels: projectChannels, hasMore, error } = await getProjectChannels(
     authorization.supabase,
     authorization.user.id,
+    (page - 1) * 50,
   );
   const { data: teamMembers, error: teamError } = await authorization.supabase
     .from("team_members")
@@ -45,6 +55,8 @@ export default async function DesignerTeamPage() {
         scope="designer"
         liveProjectChannels={projectChannels}
         liveProjectChannelsError={error ?? undefined}
+        channelPage={page}
+        hasMoreChannels={hasMore}
         teamMemberOptions={teamMembers ?? []}
         teamMemberOptionsError={teamError ? "Team members are temporarily unavailable." : undefined}
       />
