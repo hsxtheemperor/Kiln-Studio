@@ -3,7 +3,13 @@
 import Link from "next/link";
 import { useState, type ReactNode } from "react";
 
-export function AdminFrame({ children }: { children: ReactNode }) {
+export function AdminFrame({
+  children,
+  dealLeadOnly = false,
+}: {
+  children: ReactNode;
+  dealLeadOnly?: boolean;
+}) {
   const [error, setError] = useState("");
   const [signingOut, setSigningOut] = useState(false);
 
@@ -29,7 +35,7 @@ export function AdminFrame({ children }: { children: ReactNode }) {
   return (
     <div className="admin-page">
       <header className="admin-header">
-        <Link className="admin-brand" href="/admin">
+        <Link className="admin-brand" href={dealLeadOnly ? "/admin/engagements" : "/admin"}>
           <strong className="brand-mark">
             <span className="brand-symbol" aria-hidden="true">k</span>
             kiln studio
@@ -37,10 +43,17 @@ export function AdminFrame({ children }: { children: ReactNode }) {
           <span>Private studio</span>
         </Link>
         <nav className="admin-nav" aria-label="Studio navigation">
-          <Link href="/admin">Dashboard</Link>
-          <Link href="/admin/team">Team</Link>
-          <Link href="/admin/inquiries">Inquiries</Link>
-          <Link href="/admin/finance">Finance</Link>
+          {dealLeadOnly ? (
+            <Link href="/admin/engagements">Engagements</Link>
+          ) : (
+            <>
+              <Link href="/admin">Dashboard</Link>
+              <Link href="/admin/team">Team</Link>
+              <Link href="/admin/inquiries">Inquiries</Link>
+              <Link href="/admin/engagements">Engagements</Link>
+              <Link href="/admin/finance">Finance</Link>
+            </>
+          )}
           <button
             className="text-button"
             type="button"

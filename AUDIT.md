@@ -1,5 +1,52 @@
 # Kiln Studio Performance and Security Audit
 
+## Current review — 2026-11-12
+
+### Summary
+
+- **Security:** An independent source review found no substantiated security
+  vulnerabilities in the current repository changes.
+- **Performance:** The unfiltered engagement queue's missing ordering index
+  has been added in
+  `20261112133000_add_engagement_queue_order_index.sql`. A local `EXPLAIN`
+  now uses `engagements_created_at_id_idx` instead of a sequential scan and
+  sort. Exact counts remain; cursor pagination/count strategy can be revisited
+  if queue size warrants it.
+
+### Current findings
+
+| ID | Severity | Confidence | Finding |
+| --- | --- | --- | --- |
+| P5 | Medium at larger engagement counts — **remediated** | High | The default engagement queue's `(created_at DESC, id DESC)` ordering did not have a matching index; a local `EXPLAIN` showed a sequential scan followed by a sort. |
+
+**Evidence:** [`app/api/admin/engagements/route.ts`](./app/api/admin/engagements/route.ts)
+applies the ordered, exact-count, offset-paginated query. The index in
+[`20261112100000_add_engagement_review_foundation.sql`](./supabase/migrations/20261112100000_add_engagement_review_foundation.sql)
+starts with `review_state`, which did not support the unfiltered ordering. On
+the clean local database before the fix, PostgreSQL planned
+`Limit -> Sort -> Seq Scan` for the unfiltered query (estimated 430 rows).
+This was a plan-level finding, not a production latency measurement.
+
+**Remediation:** Added `engagements_created_at_id_idx` in the forward-only
+queue-index migration, retaining the state-leading index for filtered views.
+Local `EXPLAIN` confirms the unfiltered ordered query uses the new index.
+
+**Remaining consideration:** Exact counts are still requested on every page.
+If queue volume grows substantially, consider cursor pagination and avoiding
+an exact count on every page. The new index adds write and storage cost.
+
+**Scope and limitations:** Source review and local `EXPLAIN` only. No
+production data, production traces, penetration test, or realistic concurrent
+load test was used. This review does not certify external provider
+configuration.
+
+**Local verification:** Clean `supabase db reset --no-seed` applied the full
+migration chain; schema lint passed; all 207 pgTAP assertions passed; the
+unfiltered queue `EXPLAIN` selected `engagements_created_at_id_idx`. Remote
+application of `20261112133000_add_engagement_queue_order_index.sql` is
+verified in the linked project's migration history and catalog; a remote dry
+run reports no pending migrations.
+
 ## Remediation status
 
 The recommendations below have been implemented in the application and a new

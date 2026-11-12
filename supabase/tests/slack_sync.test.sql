@@ -7,6 +7,17 @@ SELECT set_config(
   '{"sub":"11000000-0000-0000-0000-000000000001","role":"authenticated","app_metadata":{"access_level":"studio_member"}}',
   true
 );
+
+INSERT INTO auth.users (
+  id, aud, role, email, encrypted_password, email_confirmed_at,
+  raw_app_meta_data, raw_user_meta_data, created_at, updated_at
+)
+VALUES (
+  '11000000-0000-0000-0000-000000000099',
+  'authenticated', 'authenticated', 'slack-deal-lead@example.test', '',
+  now(), '{"access_level":"deal_lead"}', '{}', now(), now()
+);
+
 SELECT set_config(
   'request.jwt.claim.sub',
   '11000000-0000-0000-0000-000000000001',
@@ -47,9 +58,19 @@ VALUES (
   'Slack Studio',
   'brand_identity',
   'Slack test project',
-  'accepted',
+  'new',
   5
 );
+
+UPDATE public.engagements
+SET review_state = 'suitable',
+    deal_lead_id = '11000000-0000-0000-0000-000000000099',
+    claimed_at = now()
+WHERE inquiry_id = '31000000-0000-0000-0000-000000000001';
+
+UPDATE public.inquiries
+SET status = 'accepted'
+WHERE id = '31000000-0000-0000-0000-000000000001';
 
 UPDATE public.projects
 SET project_manager_id = '21000000-0000-0000-0000-000000000001'

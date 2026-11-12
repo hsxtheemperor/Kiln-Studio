@@ -19,6 +19,7 @@ export default function PublicLayout({
           </Link>
           <nav className="site-nav" aria-label="Main navigation">
             <Link href="/services">Services</Link>
+            <Link href="/about">About</Link>
             <Link href="/work">Selected work</Link>
             <Link href="/account/sign-in">Client portal</Link>
             <Link className="nav-cta" href="/inquiry">Start a project ↗</Link>
@@ -29,6 +30,7 @@ export default function PublicLayout({
         <footer className="site-footer">
           <span>© Kiln Studio · fictional concept studio</span>
           <div className="site-footer-links">
+            <Link href="/about">About</Link>
             <Link href="/assistant">Ask the studio</Link>
             <Link href="/account/projects">My projects</Link>
             <Link href="/admin/sign-in">Studio sign in</Link>

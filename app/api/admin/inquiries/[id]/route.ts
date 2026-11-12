@@ -317,6 +317,18 @@ export async function PATCH(request: Request, { params }: RouteContext) {
     .maybeSingle();
 
   if (error) {
+    if (
+      error.code === "23514" &&
+      error.message.includes("An inquiry must be marked suitable and assigned")
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "Mark the inquiry suitable and assign it to a deal lead in Engagements before accepting it.",
+        },
+        { status: 409, headers: { "Cache-Control": "no-store" } },
+      );
+    }
     console.error("Admin inquiry could not be updated.");
     return NextResponse.json(
       { error: "The inquiry could not be updated." },

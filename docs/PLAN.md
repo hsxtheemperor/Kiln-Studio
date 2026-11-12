@@ -12,6 +12,9 @@ the implementation and schema.
   calculation, optional private reference uploads, and client request views.
 - Studio inquiry review and designer request/message workspaces with
   Supabase-authenticated access.
+- Deal-lead engagement review with suitability notes, first-claim-wins
+  ownership, studio-member reassignment, audited transitions, and database
+  enforcement that blocks project acceptance until suitability and assignment.
 - Inquiry acceptance to project/channel lifecycle, project membership, durable
   project messages, Realtime delivery, and Redis ephemeral presence.
 - Optional consent-based similarity recommendations using embeddings and
@@ -29,19 +32,22 @@ the implementation and schema.
 
 1. Add browser-level end-to-end coverage for inquiry-to-project and
    collaboration workflows.
-2. Verify each optional external integration in an isolated test account or
+2. Continue the small-team lifecycle with pricing policy, negotiation,
+   meetings, contracts, client-side review, and completion workflows as
+   specified in [PLANv2.md](./PLANv2.md).
+3. Verify each optional external integration in an isolated test account or
    workspace; automated tests mock provider calls and do not establish that
    production credentials, quotas, schedules, or Slack settings are correct.
-3. Keep finance read-only until write permissions, reconciliation, and
+4. Keep finance read-only until write permissions, reconciliation, and
    correction/audit requirements are defined.
-4. Define Q&A retention, deletion, manual FAQ review, and privacy handling
+5. Define Q&A retention, deletion, manual FAQ review, and privacy handling
    before treating support questions as approved knowledge. The current system
    stores submitted text as-is and does not redact it.
-5. Add assistant PII detection or redaction only after a clear policy and
+6. Add assistant PII detection or redaction only after a clear policy and
    failure behavior are specified.
-6. Preserve explicit opt-in and human review for inquiry similarity; do not
+7. Preserve explicit opt-in and human review for inquiry similarity; do not
    convert it into an automatic score or decision without separate evaluation.
-7. Treat Upstash Box/Lead-Generator automation and autonomous studio-record
+8. Treat Upstash Box/Lead-Generator automation and autonomous studio-record
    changes as deferred.
 
 ## Decisions to preserve

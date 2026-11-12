@@ -38,7 +38,14 @@ export function SignInForm() {
         return;
       }
 
-      const redirectTarget = buildSessionRedirect("/admin/inquiries", email);
+      const payload = (await response.json()) as {
+        accessLevel?: "studio_member" | "deal_lead";
+      };
+      const destination =
+        payload.accessLevel === "deal_lead"
+          ? "/admin/engagements"
+          : "/admin/inquiries";
+      const redirectTarget = buildSessionRedirect(destination, email);
       router.replace(redirectTarget);
       router.refresh();
     } catch {
@@ -80,8 +87,8 @@ export function SignInForm() {
         {isSubmitting ? "Signing in…" : "Sign in"} <span aria-hidden="true">↗</span>
       </button>
       <p className="admin-notice">
-        Private access for provisioned studio members only. New accounts cannot
-        be created here.
+        Private access for provisioned studio members and deal leads. New
+        accounts cannot be created here.
       </p>
       <Link className="sign-in-back" href="/">← Back to Kiln Studio</Link>
     </form>

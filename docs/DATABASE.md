@@ -35,6 +35,32 @@ Kiln-Studio project.
 | `actual_hours` | `numeric` |  Nullable |
 | `review_notes` | `text` |  Nullable |
 
+## Table `engagements`
+
+One lifecycle-review row per inquiry. New inquiries create a pending
+engagement; existing `new` and `contacted` inquiries are backfilled by
+`20261112100000_add_engagement_review_foundation.sql`.
+Deleting a synthetic inquiry for demo retention cascades to its engagement and
+transition history.
+
+| Name | Type | Constraints |
+|------|------|-------------|
+| `id` | `uuid` | Primary |
+| `inquiry_id` | `uuid` | Unique, references `inquiries.id`; cascades on deletion |
+| `review_state` | `text` | `pending`, `suitable`, `not_suitable`, or `needs_info` |
+| `review_notes` | `text` | Nullable, max 2,000 characters |
+| `reviewed_by` | `uuid` | Nullable, references `auth.users.id` |
+| `reviewed_at` | `timestamptz` | Nullable |
+| `deal_lead_id` | `uuid` | Nullable, references `auth.users.id` |
+| `claimed_at` | `timestamptz` | Nullable; retained as claim history if the owner is deleted |
+| `created_at`, `updated_at` | `timestamptz` | Required |
+
+## Table `engagement_events`
+
+Append-only transition log for creation, review, claim, and studio-member
+assignment/reassignment events. It records actor, prior and next state/owner,
+notes, and timestamp. Clients and designers do not have read access.
+
 ## Table `client_profiles`
 
 ### Columns
@@ -1254,12 +1280,20 @@ Known limitations, verified against the committed SQL:
 ## RLS and grants verification
 
 Review the committed SQL against the exact deployed Supabase version and test
-with separate anon, ordinary authenticated, client, designer, and studio-member
-accounts. The automated layer is the pgTAP suite under `supabase/tests/` (project
-lifecycles, RLS and grants, sender identity, availability, channel roles,
-inquiry priority, atomic writes and finance/report behavior). At minimum
-verify:
+with separate anon, ordinary authenticated, client, designer, deal-lead, and
+studio-member accounts. The automated layer is the pgTAP suite under
+`supabase/tests/` (engagement review/claim/assignment, project lifecycles, RLS
+and grants, sender identity, availability, channel roles, inquiry priority,
+atomic writes, and finance/report behavior). At minimum verify:
 
+- Deal leads can read inquiry/brief and engagement data, but cannot read
+  finance data or change another deal lead's claimed engagement.
+- Claims serialize so only one deal lead can own a suitable engagement;
+  studio members alone can assign/reassign to a provisioned deal lead.
+- Inquiry acceptance is rejected unless its engagement is suitable and
+  assigned, and accepted inquiries cannot be re-reviewed into another state.
+- Engagement review, claim, and assignment transitions are represented in
+  `engagement_events`.
 - Anonymous users cannot query private inquiries, client data, messages, team
   assignments, finance data, or channel history.
 - Clients cannot access another client's profile or inquiries.
@@ -1313,8 +1347,9 @@ without a real Supabase database do not prove RLS behavior.
    chain to the disposable local database.
 4. Run `pnpm dlx supabase db lint --schema public --fail-on error` and
    `pnpm dlx supabase test db` to validate the schema and every pgTAP file under
-   `supabase/tests/`. Coverage includes inquiry acceptance, project and channel
-   creation, PM and channel-member synchronization, channel ordering,
+   `supabase/tests/`. Coverage includes engagement review, claims and
+   assignment, inquiry acceptance gating, project and channel creation, PM and
+   channel-member synchronization, channel ordering,
    permissions, archived history and writes, sender identity, table grants,
    project-brief constraints and upserts, availability, and channel roles.
 5. Run `pnpm test` and `pnpm typecheck` for the application code.

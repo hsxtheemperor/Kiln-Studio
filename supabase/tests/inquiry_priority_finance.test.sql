@@ -2,6 +2,16 @@ BEGIN;
 
 SELECT no_plan();
 
+INSERT INTO auth.users (
+  id, aud, role, email, encrypted_password, email_confirmed_at,
+  raw_app_meta_data, raw_user_meta_data, created_at, updated_at
+)
+VALUES (
+  '10000000-0000-0000-0000-000000000198',
+  'authenticated', 'authenticated', 'priority-deal-lead@example.test', '',
+  now(), '{"access_level":"deal_lead"}', '{}', now(), now()
+);
+
 INSERT INTO public.inquiries (id, name, email, project_brief, priority_score, status)
 VALUES (
   '30000000-0000-0000-0000-000000000091',
@@ -9,8 +19,18 @@ VALUES (
   'finance-test@example.test',
   'Finance and priority test inquiry',
   10,
-  'accepted'
+  'new'
 );
+
+UPDATE public.engagements
+SET review_state = 'suitable',
+    deal_lead_id = '10000000-0000-0000-0000-000000000198',
+    claimed_at = now()
+WHERE inquiry_id = '30000000-0000-0000-0000-000000000091';
+
+UPDATE public.inquiries
+SET status = 'accepted'
+WHERE id = '30000000-0000-0000-0000-000000000091';
 
 SELECT is(
   (SELECT priority_score FROM public.inquiries

@@ -24,11 +24,22 @@ export default function HomePage() {
       </section>
 
       <section className="section-rule">
-        <p className="section-label">A little about us</p>
-        <p className="section-copy">
-          Good design doesn&apos;t shout. It <em>makes things clear,</em> gives
-          good ideas a place to grow, and helps people feel something.
-        </p>
+        <p className="section-label">A little about the studio</p>
+        <div className="home-about-copy">
+          <p className="section-copy">
+            Good design doesn&apos;t shout. It <em>makes things clear,</em>{" "}
+            gives good ideas a place to grow, and helps people feel something.
+          </p>
+          <p className="home-about-detail">
+            Kiln is a fictional independent design studio concept focused on
+            thoughtful identities, digital experiences, and useful
+            interfaces. The work here is imagined; the craft behind this
+            interactive demo is real.
+          </p>
+          <Link className="text-link" href="/about">
+            Get to know the studio <span aria-hidden="true">↗</span>
+          </Link>
+        </div>
       </section>
 
       <section className="service-strip" aria-label="Studio services">

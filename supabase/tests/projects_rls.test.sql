@@ -2,6 +2,16 @@ BEGIN;
 
 SELECT plan(42);
 
+INSERT INTO auth.users (
+  id, aud, role, email, encrypted_password, email_confirmed_at,
+  raw_app_meta_data, raw_user_meta_data, created_at, updated_at
+)
+VALUES (
+  '10000000-0000-0000-0000-000000000197',
+  'authenticated', 'authenticated', 'project-deal-lead@example.test', '',
+  now(), '{"access_level":"deal_lead"}', '{}', now(), now()
+);
+
 SELECT set_config(
   'request.jwt.claims',
   '{"sub":"10000000-0000-0000-0000-000000000001","role":"authenticated","app_metadata":{"access_level":"studio_member"}}',
@@ -22,7 +32,22 @@ INSERT INTO public.inquiries (
 )
 VALUES
   ('30000000-0000-0000-0000-000000000001', 'Client One', 'client-one@example.test', 'Studio One', 'brand_identity', 'First project brief', 'new', 7),
-  ('30000000-0000-0000-0000-000000000002', 'Client Two', 'client-two@example.test', 'Studio Two', 'web_design', 'Second project brief', 'accepted', 9);
+  ('30000000-0000-0000-0000-000000000002', 'Client Two', 'client-two@example.test', 'Studio Two', 'web_design', 'Second project brief', 'new', 9);
+
+UPDATE public.engagements
+SET review_state = 'suitable',
+    deal_lead_id = '10000000-0000-0000-0000-000000000197',
+    claimed_at = now()
+WHERE inquiry_id IN (
+  '30000000-0000-0000-0000-000000000001',
+  '30000000-0000-0000-0000-000000000002'
+);
+
+UPDATE public.inquiries
+SET status = 'accepted'
+WHERE id IN (
+  '30000000-0000-0000-0000-000000000002'
+);
 
 SELECT is(
   (SELECT count(*) FROM public.projects WHERE inquiry_id = '30000000-0000-0000-0000-000000000001'),

@@ -88,65 +88,72 @@ describe("inquiry similarity", () => {
     expect(text).not.toContain("private.example.test");
   });
 
-  it("embeds opted-in text, stores no raw text in Vector, and records neighbor IDs", async () => {
-    const inquiryId = "inquiry-current";
-    let inquiryCall = 0;
-    const service = {
-      from: vi.fn((table: string) => {
-        if (table === "inquiry_briefs") {
-          return createQuery({
-            data: {
-              design_goal: "Improve navigation",
-              brand_message: "Warm and practical",
-              target_audience: "Local customers",
-              desired_outcomes: "More online bookings",
-            },
-            error: null,
-          });
-        }
+  it.each(["OPENAI_API_KEY", "OPENAI_API"])(
+    "embeds opted-in text with %s, stores no raw text in Vector, and records neighbor IDs",
+    async (apiKeyVariable) => {
+      vi.stubEnv("OPENAI_API_KEY", "");
+      vi.stubEnv("OPENAI_API", "");
+      vi.stubEnv(apiKeyVariable, "test-openai-key");
 
-        const result =
-          inquiryCall++ === 0
-            ? {
-                data: {
-                  id: inquiryId,
-                  similarity_opt_in: true,
-                  project_brief: "A visual refresh for a bakery",
-                },
-                error: null,
-              }
-            : inquiryCall === 2 || inquiryCall === 3
-              ? { data: { id: inquiryId }, error: null }
-              : { data: null, error: null };
-        return createQuery(result);
-      }),
-    };
-    mocks.createSupabaseServiceClient.mockReturnValue(service);
+      const inquiryId = "inquiry-current";
+      let inquiryCall = 0;
+      const service = {
+        from: vi.fn((table: string) => {
+          if (table === "inquiry_briefs") {
+            return createQuery({
+              data: {
+                design_goal: "Improve navigation",
+                brand_message: "Warm and practical",
+                target_audience: "Local customers",
+                desired_outcomes: "More online bookings",
+              },
+              error: null,
+            });
+          }
 
-    const fetchMock = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
-      const request = JSON.parse(String(init?.body)) as { input: string };
-      expect(request.input).toContain("A visual refresh for a bakery");
-      expect(request.input).not.toContain("ada@example.test");
-      return new Response(
-        JSON.stringify({
-          data: [{ embedding: Array.from({ length: 1536 }, () => 0.01) }],
+          const result =
+            inquiryCall++ === 0
+              ? {
+                  data: {
+                    id: inquiryId,
+                    similarity_opt_in: true,
+                    project_brief: "A visual refresh for a bakery",
+                  },
+                  error: null,
+                }
+              : inquiryCall === 2 || inquiryCall === 3
+                ? { data: { id: inquiryId }, error: null }
+                : { data: null, error: null };
+          return createQuery(result);
         }),
-        { status: 200 },
-      );
-    });
-    vi.stubGlobal("fetch", fetchMock);
+      };
+      mocks.createSupabaseServiceClient.mockReturnValue(service);
 
-    await processInquirySimilarity(inquiryId);
+      const fetchMock = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+        const request = JSON.parse(String(init?.body)) as { input: string };
+        expect(request.input).toContain("A visual refresh for a bakery");
+        expect(request.input).not.toContain("ada@example.test");
+        return new Response(
+          JSON.stringify({
+            data: [{ embedding: Array.from({ length: 1536 }, () => 0.01) }],
+          }),
+          { status: 200 },
+        );
+      });
+      vi.stubGlobal("fetch", fetchMock);
 
-    expect(fetchMock).toHaveBeenCalledOnce();
-    expect(mocks.vectorUpsert).toHaveBeenCalledWith({
-      id: inquiryId,
-      vector: expect.arrayContaining([0.01]),
-      metadata: { inquiry_id: inquiryId },
-    });
-    expect(mocks.vectorUpsert.mock.calls[0][0]).not.toHaveProperty("data");
-    expect(service.from).toHaveBeenCalledWith("inquiries");
-  });
+      await processInquirySimilarity(inquiryId);
+
+      expect(fetchMock).toHaveBeenCalledOnce();
+      expect(mocks.vectorUpsert).toHaveBeenCalledWith({
+        id: inquiryId,
+        vector: expect.arrayContaining([0.01]),
+        metadata: { inquiry_id: inquiryId },
+      });
+      expect(mocks.vectorUpsert.mock.calls[0][0]).not.toHaveProperty("data");
+      expect(service.from).toHaveBeenCalledWith("inquiries");
+    },
+  );
 
   it("does not call OpenAI or store a vector when consent is absent", async () => {
     const inquiry = createQuery({ data: null, error: null });

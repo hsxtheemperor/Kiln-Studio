@@ -85,6 +85,16 @@ SELECT ok(
   'trigger function is not directly executable by API roles'
 );
 
+INSERT INTO auth.users (
+  id, aud, role, email, encrypted_password, email_confirmed_at,
+  raw_app_meta_data, raw_user_meta_data, created_at, updated_at
+)
+VALUES (
+  '10000000-0000-0000-0000-000000000196',
+  'authenticated', 'authenticated', 'grants-deal-lead@example.test', '',
+  now(), '{"access_level":"deal_lead"}', '{}', now(), now()
+);
+
 INSERT INTO public.inquiries (id, name, email, project_brief)
 VALUES (
   '00000000-0000-0000-0000-000000000091',
@@ -100,6 +110,12 @@ VALUES (
   'Grant Test Designer',
   'grant-designer@example.test'
 );
+
+UPDATE public.engagements
+SET review_state = 'suitable',
+    deal_lead_id = '10000000-0000-0000-0000-000000000196',
+    claimed_at = now()
+WHERE inquiry_id = '00000000-0000-0000-0000-000000000091';
 
 UPDATE public.inquiries
 SET status = 'accepted'
