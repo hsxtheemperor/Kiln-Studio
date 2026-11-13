@@ -80,7 +80,7 @@ been fully verified.
    because its route exists.
 7. For Slack, configure OAuth callback, Events API URL, event subscriptions,
    encryption/signing secrets, and test only in a dedicated workspace with
-   synthetic records; see [SLACK.md](./SLACK.md).
+   synthetic records; see [SLACK.md](../design-docs/SLACK.md).
 8. Run `pnpm test`, `pnpm typecheck`, `pnpm build`, and the local Supabase
    migration/schema/pgTAP checks in CI. Validate provider setup and authorization
    in an explicitly designated test environment.
@@ -105,6 +105,7 @@ been fully verified.
   permissions, an explicit approval point, and tested rollback/failure
   handling.
 
-The canonical application/data map is in [ARCHITECTURE.md](./ARCHITECTURE.md)
-and [DATABASE.md](./DATABASE.md). For what a visitor or reviewer can currently
-exercise, see [DEMO.md](./DEMO.md).
+The canonical application/data map is in
+[ARCHITECTURE.md](../design-docs/ARCHITECTURE.md) and
+[DATABASE.md](../design-docs/DATABASE.md). For what a visitor or reviewer can
+currently exercise, see [DEMO.md](../DEMO.md).

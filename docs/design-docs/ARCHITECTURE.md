@@ -27,7 +27,10 @@ Public browser
 Studio browser
   ├─ Admin sign-in → studio_member app_metadata
   │    ├─ dashboard and inquiry inbox
+  │    ├─ engagement review and deal-lead assignment
   │    └─ project operations: PM assignment, deadlines, completion, channel ordering
+  ├─ Deal-lead sign-in → deal_lead app_metadata
+  │    └─ suitability review, notes, first-claim-wins ownership
   └─ Designer sign-in → designer or studio_member app_metadata
        ├─ priority queue and inquiry message room
        └─ Team page with live project membership, persistent messages, and Redis presence
@@ -52,8 +55,9 @@ Next.js route groups organize layouts without adding URL prefixes.
 
 | Path | Responsibility |
 | --- | --- |
-| `app/(public)/` | Public site, inquiry form, client sign-in/up, and client request pages. |
+| `app/(public)/` | Public site and About story, inquiry form, client sign-in/up, and client request pages. |
 | `app/(admin)/admin/` | Studio-member dashboard, inquiry management, and Team view. |
+| `app/(admin)/admin/engagements/` | Protected engagement review and claim workspace for deal leads and studio members. |
 | `app/(designer)/designer/` | Designer priority queue, inquiry room, and Team view. |
 | `app/api/` | Server-side inquiry, auth, admin-inquiry, designer-message, and project collaboration handlers. |
 
@@ -65,7 +69,7 @@ Next.js route groups organize layouts without adding URL prefixes.
 | --- | --- |
 | `app/layout.tsx` | Root metadata/styles and Vercel Speed Insights. |
 | `app/globals.css` | Shared public, admin, designer, and Team visual system. |
-| `app/(public)/page.tsx`, `services/page.tsx`, `work/page.tsx` | Public landing, service, and fictional concept-work pages. |
+| `app/(public)/page.tsx`, `about/page.tsx`, `services/page.tsx`, `work/page.tsx` | Public landing/About story, service, and fictional concept-work pages. |
 | `app/(public)/inquiry/page.tsx` | Inquiry entry point and optional client prefill. |
 | `app/(public)/assistant/page.tsx` | Full-page public customer-support assistant entry point. |
 | `components/inquiry/inquiry-form.tsx` | Client-side form UX; server validation remains authoritative. |
@@ -80,6 +84,7 @@ Next.js route groups organize layouts without adding URL prefixes.
 | `components/admin/admin-frame.tsx` | Admin shell/navigation and sign-out UI. |
 | `components/admin/activity-feed.tsx` | Admin-only initial activity list and live Supabase Realtime subscription, rendered with RLS-protected session data. |
 | `components/admin/inquiry-inbox.tsx`, `inquiry-detail.tsx` | Inquiry list/filter/pagination and status update UI. |
+| `components/admin/engagement-inbox.tsx` | Suitability review, first-claim-wins actions, and admin reassignment UI. |
 | `components/team/team-workspace.tsx` | Active team directory, project membership management, on-demand paginated project conversations, and presence for the open channel only. |
 | `components/designer/designer-project-room.tsx` | Assignment-scoped designer/client-request messages with older-history pagination. |
 
@@ -95,9 +100,11 @@ Next.js route groups organize layouts without adding URL prefixes.
 | `app/api/client-chat/route.ts` | Rate-limits public assistant questions and reads short-lived response state. |
 | `app/api/workflows/client-chat/route.ts` | Runs public-information assistant generation and result storage as retryable Workflow steps. |
 | `app/api/client/auth/route.ts` | Client sign-in/up; creates/updates profile and optional single company record. |
-| `app/api/admin/auth/route.ts` | Studio-member sign-in/sign-out. |
+| `app/api/admin/auth/route.ts` | Studio-member and deal-lead sign-in/sign-out. |
 | `app/api/designer/auth/route.ts` | Designer/studio-member sign-in gate. |
 | `app/api/admin/inquiries/route.ts`, `[id]/route.ts` | Protected inquiry list/detail and status/priority updates. |
+| `app/api/admin/engagements/route.ts`, `[id]/route.ts` | Protected paginated queue and database-backed review, claim, and reassignment actions. |
+| `app/api/admin/engagements/deal-leads/route.ts` | Studio-member-only list of provisioned deal leads for assignment. |
 | `app/api/designer/messages/route.ts` | Assignment-authorized, rate-limited designer message reads/writes with 50-message pagination. |
 | `app/api/projects/[id]/members/route.ts` | Adds and removes project team members using the authenticated session; RLS authorizes administrators/project managers. |
 | `app/api/projects/[id]/messages/route.ts` | Reads bounded project-channel message pages and persists new messages with sender identity derived from the authenticated team profile. |
@@ -151,6 +158,7 @@ Next.js route groups organize layouts without adding URL prefixes.
 | `supabase/migrations/20261112000000_scope_designer_access_and_bound_workspace_reads.sql` | Adds a minimal designer queue projection, assignment-scoped inquiry/brief/message policies, studio-only legacy finance reads, and paginates project channels. |
 | `supabase/tests/` | pgTAP coverage for inquiry priority/atomic writes, reference-file access and linking, project lifecycle and RLS, designer assignment boundaries, finance/report behavior, grants, team roles, channel rules, and support-message privacy/idempotency. |
 | `.github/workflows/ci.yml` | Runs application tests, QStash/Workflow-focused checks, typecheck/build, and clean local Supabase migration, lint, and pgTAP checks on pull requests and all pushes; no deployment. |
+| `docs/design-docs/DEPLOYMENT.md` | Documents GitHub CI, Vercel Production/Preview/Development targets, environment-variable boundaries, and deployment verification. |
 | `lib/supabase/database.types.ts` | Application-side Supabase row/insert types. |
 | `tests/unit/`, `tests/lib/`, `tests/api/` | Focused validation, priority, upload/queue, similarity, and API/auth tests. |
 | `tests/e2e/` | Placeholder for browser-level workflows. |
@@ -167,6 +175,16 @@ Next.js route groups organize layouts without adding URL prefixes.
 - The service-role key is server-only and bypasses RLS; keep its use narrow.
 
 ## Implemented versus demo-only
+
+**Deal-lead review:** migration
+`20261112100000_add_engagement_review_foundation.sql` creates one engagement per
+new inquiry, records review/claim/reassignment events, and exposes protected
+database transitions. Deal leads can review unclaimed or self-owned work and
+claim a suitable engagement; studio members can oversee and reassign it.
+Postgres also blocks accepting an inquiry until it is suitable and assigned.
+Negotiation, meetings, contracts, email, and completion review remain deferred;
+Instagram lead capture is a separate deferred plan in
+`docs/plan-docs/INSTAGRAM.md`.
 
 **Connected to backend:** public inquiry and brief persistence, inquiry priority,
 client account/profile flows, admin inquiry reads and status/priority updates,
@@ -205,7 +223,7 @@ Availability editing, general/announcement chat, and message pagination are
 not implemented. Channel messages stream over Supabase Realtime. Online and
 typing indicators use project-member-scoped Redis keys with short TTLs; they
 are ephemeral and do not replace Postgres messages. See
-[DATABASE.md](./DATABASE.md) and [DEMO.md](./DEMO.md).
+[DATABASE.md](./DATABASE.md) and [DEMO.md](../DEMO.md).
 
 **Slack synchronization:** workspace installation and designer account linking
 use verified OAuth. The Postgres outbox creates private project channels,

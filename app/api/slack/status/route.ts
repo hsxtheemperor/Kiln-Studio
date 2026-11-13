@@ -15,7 +15,7 @@ export async function GET() {
       .maybeSingle();
     if (installationError) throw new Error("Slack installation status could not be loaded.");
 
-    const { data: teamMember, error: teamMemberError } = await service
+    const { data: teamMember, error: teamMemberError } = await authorization.supabase
       .from("team_members")
       .select("id")
       .eq("user_id", authorization.user.id)

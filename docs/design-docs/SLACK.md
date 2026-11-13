@@ -41,6 +41,15 @@ model. Keep all sensitive reads and writes behind app authorization and
 database RLS. Project messages remain in Supabase; Slack is not the historical
 source of truth.
 
+The local demo's project conversations are synthetic app-originated records,
+not Slack users or messages. The team workspace labels their source, and the
+local seed intentionally contains no Slack installation, verified user
+mappings, or provider events. A local demo therefore does not verify OAuth,
+channel/member reconciliation, outbound delivery, or inbound Events API
+handling. The seed does queue project-channel sync jobs; run them only against
+a dedicated test workspace because they can create channels for seeded
+projects.
+
 New messages are synchronized. Historical Slack backfill, thread relationships,
 and message edit/delete synchronization are not implemented. Slack event
 subscriptions also depend on app configuration and workspace approval.
@@ -58,5 +67,6 @@ Monitor failed sync/outbox jobs.
 
 Use only a workspace intended for testing and synthetic projects/messages.
 Do not post exploratory messages or create channels in an unrelated workspace.
-See [PROD.md](./PROD.md) for deployment boundaries and [DATABASE.md](./DATABASE.md)
+See [PROD.md](../plan-docs/PROD.md) for deployment boundaries and
+[DATABASE.md](./DATABASE.md)
 for the schema, grants, and RLS model.

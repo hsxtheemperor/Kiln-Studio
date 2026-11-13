@@ -35,6 +35,32 @@ Kiln-Studio project.
 | `actual_hours` | `numeric` |  Nullable |
 | `review_notes` | `text` |  Nullable |
 
+## Table `engagements`
+
+One lifecycle-review row per inquiry. New inquiries create a pending
+engagement; existing `new` and `contacted` inquiries are backfilled by
+`20261112100000_add_engagement_review_foundation.sql`.
+Deleting a synthetic inquiry for demo retention cascades to its engagement and
+transition history.
+
+| Name | Type | Constraints |
+|------|------|-------------|
+| `id` | `uuid` | Primary |
+| `inquiry_id` | `uuid` | Unique, references `inquiries.id`; cascades on deletion |
+| `review_state` | `text` | `pending`, `suitable`, `not_suitable`, or `needs_info` |
+| `review_notes` | `text` | Nullable, max 2,000 characters |
+| `reviewed_by` | `uuid` | Nullable, references `auth.users.id` |
+| `reviewed_at` | `timestamptz` | Nullable |
+| `deal_lead_id` | `uuid` | Nullable, references `auth.users.id` |
+| `claimed_at` | `timestamptz` | Nullable; retained as claim history if the owner is deleted |
+| `created_at`, `updated_at` | `timestamptz` | Required |
+
+## Table `engagement_events`
+
+Append-only transition log for creation, review, claim, and studio-member
+assignment/reassignment events. It records actor, prior and next state/owner,
+notes, and timestamp. Clients and designers do not have read access.
+
 ## Table `client_profiles`
 
 ### Columns
@@ -765,29 +791,29 @@ operational tables by triggers, not by foreign keys.
 
 **Committed.** The canonical migration files are applied in timestamp order:
 
-1. [`20261107000000_create_inquiries.sql`](../supabase/migrations/20261107000000_create_inquiries.sql): creates the inquiry table, constraints, indexes, update trigger, and initial inquiry policies.
-2. [`20261107010000_client_accounts_and_project_access.sql`](../supabase/migrations/20261107010000_client_accounts_and_project_access.sql): adds client profiles, links inquiries to clients, and adds client-scoped access.
-3. [`20261107020000_client_company_relationships.sql`](../supabase/migrations/20261107020000_client_company_relationships.sql): adds client-company records and moves the optional company value out of the profile.
-4. [`20261107030000_designer_messages_and_finance_tracking.sql`](../supabase/migrations/20261107030000_designer_messages_and_finance_tracking.sql): adds inquiry messages and the first finance-tracking tables.
-5. [`20261107040000_team_roles_and_channels.sql`](../supabase/migrations/20261107040000_team_roles_and_channels.sql): adds the initial team, assignment, channel, and channel-message tables.
-6. [`20261107050000_team_statuses_and_channel_roles.sql`](../supabase/migrations/20261107050000_team_statuses_and_channel_roles.sql): maps legacy availability values, resolves duplicate legacy PM flags, and constrains availability and channel roles.
-7. [`20261107060000_project_briefs_priority.sql`](../supabase/migrations/20261107060000_project_briefs_priority.sql): adds extended briefs and priority scoring.
-8. [`20261108000000_projects_and_system_activity.sql`](../supabase/migrations/20261108000000_projects_and_system_activity.sql): adds accepted-inquiry projects, deadlines, project teams, project channels, completion/archive rules, channel ordering, and system activity auditing.
-9. [`20261108010000_harden_table_grants.sql`](../supabase/migrations/20261108010000_harden_table_grants.sql): revokes the default grants (including `TRUNCATE`, which bypasses RLS) on the eight tables from migrations 4 and 5, re-grants only `SELECT` plus column-level `INSERT`, and pins the `search_path` of the shared `updated_at` function.
-10. [`20261108020000_fix_studio_access_policies.sql`](../supabase/migrations/20261108020000_fix_studio_access_policies.sql): fixes policies from migrations 4 and 5 that read a top-level `access_level` claim instead of `app_metadata`, which locked designers and studio members out of those tables.
-11. [`20261108030000_allow_project_brief_upserts.sql`](../supabase/migrations/20261108030000_allow_project_brief_upserts.sql): grants the service role the table read permission PostgreSQL requires for project-brief upserts.
-12. [`20261108040000_enforce_message_sender_identity.sql`](../supabase/migrations/20261108040000_enforce_message_sender_identity.sql): prevents sender impersonation on inquiry and channel messages and preserves the archived-project-channel write lock.
-13. [`20261108050000_align_inquiry_priority_and_finance.sql`](../supabase/migrations/20261108050000_align_inquiry_priority_and_finance.sql): renames `project_briefs` to `inquiry_briefs`, moves priority to inquiries, creates an atomic inquiry/brief RPC, restricts activity-feed access to studio members, and adds normalized project-finance and quarterly-report tables/functions.
-14. [`20261108060000_enable_system_activity_realtime.sql`](../supabase/migrations/20261108060000_enable_system_activity_realtime.sql): adds `system_activity_logs` to the Supabase Realtime publication.
-15. [`20261108070000_restrict_membership_changes_to_active_projects.sql`](../supabase/migrations/20261108070000_restrict_membership_changes_to_active_projects.sql): prevents project member additions or role changes after completion while allowing membership removal to revoke access.
-16. [`20261108080000_add_slack_sync_foundation.sql`](../supabase/migrations/20261108080000_add_slack_sync_foundation.sql): adds encrypted Slack installation and user mappings, project channel mappings, message outbox, event receipts, and service-only synchronization functions.
-17. [`20261108090000_enable_project_message_realtime.sql`](../supabase/migrations/20261108090000_enable_project_message_realtime.sql): adds project chat messages to Realtime and reclaims stale sync/outbox jobs.
-18. [`20261109000000_reconcile_slack_project_members.sql`](../supabase/migrations/20261109000000_reconcile_slack_project_members.sql): reconciles Slack channel membership after project membership, account-link, team-active-state, and workspace-installation changes; supports installation revocation and reconnection.
-19. [`20261109010000_add_inquiry_reference_uploads.sql`](../supabase/migrations/20261109010000_add_inquiry_reference_uploads.sql): creates a private image bucket and server-only reference metadata; links uploads atomically to inquiries and queues verification.
-20. [`20261109020000_add_opt_in_inquiry_similarity.sql`](../supabase/migrations/20261109020000_add_opt_in_inquiry_similarity.sql): adds explicit consent, advisory match state, and human review fields while preserving atomic inquiry creation.
-21. [`20261111000000_add_customer_support_messages.sql`](../supabase/migrations/20261111000000_add_customer_support_messages.sql): creates a small, service-role-only table for idempotent public support question/answer pairs without separate account/IP metadata; submitted text is not scrubbed.
-22. [`20261111010000_allow_idempotent_support_message_upserts.sql`](../supabase/migrations/20261111010000_allow_idempotent_support_message_upserts.sql): grants the service role column-level `SELECT` on `request_id`, which PostgreSQL requires for the idempotent upsert conflict check, without granting reads of question or answer text.
-23. [`20261111020000_claim_slack_outbox_message.sql`](../supabase/migrations/20261111020000_claim_slack_outbox_message.sql): adds an atomic service-role-only claim function for one Slack outbox message, used by QStash-triggered delivery and safe against concurrent/repeated claims.
+1. [`20261107000000_create_inquiries.sql`](../../supabase/migrations/20261107000000_create_inquiries.sql): creates the inquiry table, constraints, indexes, update trigger, and initial inquiry policies.
+2. [`20261107010000_client_accounts_and_project_access.sql`](../../supabase/migrations/20261107010000_client_accounts_and_project_access.sql): adds client profiles, links inquiries to clients, and adds client-scoped access.
+3. [`20261107020000_client_company_relationships.sql`](../../supabase/migrations/20261107020000_client_company_relationships.sql): adds client-company records and moves the optional company value out of the profile.
+4. [`20261107030000_designer_messages_and_finance_tracking.sql`](../../supabase/migrations/20261107030000_designer_messages_and_finance_tracking.sql): adds inquiry messages and the first finance-tracking tables.
+5. [`20261107040000_team_roles_and_channels.sql`](../../supabase/migrations/20261107040000_team_roles_and_channels.sql): adds the initial team, assignment, channel, and channel-message tables.
+6. [`20261107050000_team_statuses_and_channel_roles.sql`](../../supabase/migrations/20261107050000_team_statuses_and_channel_roles.sql): maps legacy availability values, resolves duplicate legacy PM flags, and constrains availability and channel roles.
+7. [`20261107060000_project_briefs_priority.sql`](../../supabase/migrations/20261107060000_project_briefs_priority.sql): adds extended briefs and priority scoring.
+8. [`20261108000000_projects_and_system_activity.sql`](../../supabase/migrations/20261108000000_projects_and_system_activity.sql): adds accepted-inquiry projects, deadlines, project teams, project channels, completion/archive rules, channel ordering, and system activity auditing.
+9. [`20261108010000_harden_table_grants.sql`](../../supabase/migrations/20261108010000_harden_table_grants.sql): revokes the default grants (including `TRUNCATE`, which bypasses RLS) on the eight tables from migrations 4 and 5, re-grants only `SELECT` plus column-level `INSERT`, and pins the `search_path` of the shared `updated_at` function.
+10. [`20261108020000_fix_studio_access_policies.sql`](../../supabase/migrations/20261108020000_fix_studio_access_policies.sql): fixes policies from migrations 4 and 5 that read a top-level `access_level` claim instead of `app_metadata`, which locked designers and studio members out of those tables.
+11. [`20261108030000_allow_project_brief_upserts.sql`](../../supabase/migrations/20261108030000_allow_project_brief_upserts.sql): grants the service role the table read permission PostgreSQL requires for project-brief upserts.
+12. [`20261108040000_enforce_message_sender_identity.sql`](../../supabase/migrations/20261108040000_enforce_message_sender_identity.sql): prevents sender impersonation on inquiry and channel messages and preserves the archived-project-channel write lock.
+13. [`20261108050000_align_inquiry_priority_and_finance.sql`](../../supabase/migrations/20261108050000_align_inquiry_priority_and_finance.sql): renames `project_briefs` to `inquiry_briefs`, moves priority to inquiries, creates an atomic inquiry/brief RPC, restricts activity-feed access to studio members, and adds normalized project-finance and quarterly-report tables/functions.
+14. [`20261108060000_enable_system_activity_realtime.sql`](../../supabase/migrations/20261108060000_enable_system_activity_realtime.sql): adds `system_activity_logs` to the Supabase Realtime publication.
+15. [`20261108070000_restrict_membership_changes_to_active_projects.sql`](../../supabase/migrations/20261108070000_restrict_membership_changes_to_active_projects.sql): prevents project member additions or role changes after completion while allowing membership removal to revoke access.
+16. [`20261108080000_add_slack_sync_foundation.sql`](../../supabase/migrations/20261108080000_add_slack_sync_foundation.sql): adds encrypted Slack installation and user mappings, project channel mappings, message outbox, event receipts, and service-only synchronization functions.
+17. [`20261108090000_enable_project_message_realtime.sql`](../../supabase/migrations/20261108090000_enable_project_message_realtime.sql): adds project chat messages to Realtime and reclaims stale sync/outbox jobs.
+18. [`20261109000000_reconcile_slack_project_members.sql`](../../supabase/migrations/20261109000000_reconcile_slack_project_members.sql): reconciles Slack channel membership after project membership, account-link, team-active-state, and workspace-installation changes; supports installation revocation and reconnection.
+19. [`20261109010000_add_inquiry_reference_uploads.sql`](../../supabase/migrations/20261109010000_add_inquiry_reference_uploads.sql): creates a private image bucket and server-only reference metadata; links uploads atomically to inquiries and queues verification.
+20. [`20261109020000_add_opt_in_inquiry_similarity.sql`](../../supabase/migrations/20261109020000_add_opt_in_inquiry_similarity.sql): adds explicit consent, advisory match state, and human review fields while preserving atomic inquiry creation.
+21. [`20261111000000_add_customer_support_messages.sql`](../../supabase/migrations/20261111000000_add_customer_support_messages.sql): creates a small, service-role-only table for idempotent public support question/answer pairs without separate account/IP metadata; submitted text is not scrubbed.
+22. [`20261111010000_allow_idempotent_support_message_upserts.sql`](../../supabase/migrations/20261111010000_allow_idempotent_support_message_upserts.sql): grants the service role column-level `SELECT` on `request_id`, which PostgreSQL requires for the idempotent upsert conflict check, without granting reads of question or answer text.
+23. [`20261111020000_claim_slack_outbox_message.sql`](../../supabase/migrations/20261111020000_claim_slack_outbox_message.sql): adds an atomic service-role-only claim function for one Slack outbox message, used by QStash-triggered delivery and safe against concurrent/repeated claims.
 
 Migrations 9 to 12 harden and refine migration 8; migrations 13 to 15 finalize
 inquiry priority, activity-feed access/Realtime, finance, and project-team
@@ -1254,12 +1280,20 @@ Known limitations, verified against the committed SQL:
 ## RLS and grants verification
 
 Review the committed SQL against the exact deployed Supabase version and test
-with separate anon, ordinary authenticated, client, designer, and studio-member
-accounts. The automated layer is the pgTAP suite under `supabase/tests/` (project
-lifecycles, RLS and grants, sender identity, availability, channel roles,
-inquiry priority, atomic writes and finance/report behavior). At minimum
-verify:
+with separate anon, ordinary authenticated, client, designer, deal-lead, and
+studio-member accounts. The automated layer is the pgTAP suite under
+`supabase/tests/` (engagement review/claim/assignment, project lifecycles, RLS
+and grants, sender identity, availability, channel roles, inquiry priority,
+atomic writes, and finance/report behavior). At minimum verify:
 
+- Deal leads can read inquiry/brief and engagement data, but cannot read
+  finance data or change another deal lead's claimed engagement.
+- Claims serialize so only one deal lead can own a suitable engagement;
+  studio members alone can assign/reassign to a provisioned deal lead.
+- Inquiry acceptance is rejected unless its engagement is suitable and
+  assigned, and accepted inquiries cannot be re-reviewed into another state.
+- Engagement review, claim, and assignment transitions are represented in
+  `engagement_events`.
 - Anonymous users cannot query private inquiries, client data, messages, team
   assignments, finance data, or channel history.
 - Clients cannot access another client's profile or inquiries.
@@ -1309,12 +1343,18 @@ without a real Supabase database do not prove RLS behavior.
 1. Keep development and production Supabase projects separate.
 2. Configure `.env.local` from `.env.example`; do not commit secrets.
 3. With the Supabase CLI and Docker installed, run `pnpm dlx supabase start`,
-   then `pnpm dlx supabase db reset --yes --no-seed` to apply the full migration
-   chain to the disposable local database.
-4. Run `pnpm dlx supabase db lint --schema public --fail-on error` and
+   then `pnpm dlx supabase db reset --yes` to apply migrations and load the
+   local synthetic workspace from
+   [`supabase/seedings/`](../../supabase/seedings/). Its demo accounts all use
+   the password `kiln-local-demo`; these credentials are only for the local
+   Supabase instance.
+4. For isolated database integration tests, run
+   `pnpm dlx supabase db reset --yes --no-seed` first, then run
+   `pnpm dlx supabase db lint --schema public --fail-on error` and
    `pnpm dlx supabase test db` to validate the schema and every pgTAP file under
-   `supabase/tests/`. Coverage includes inquiry acceptance, project and channel
-   creation, PM and channel-member synchronization, channel ordering,
+   `supabase/tests/`. Coverage includes engagement review, claims and
+   assignment, inquiry acceptance gating, project and channel creation, PM and
+   channel-member synchronization, channel ordering,
    permissions, archived history and writes, sender identity, table grants,
    project-brief constraints and upserts, availability, and channel roles.
 5. Run `pnpm test` and `pnpm typecheck` for the application code.

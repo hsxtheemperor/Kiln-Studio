@@ -14,7 +14,9 @@ personal, confidential, payment, or otherwise sensitive information.
 | Area | Implemented capability |
 | --- | --- |
 | Public portfolio | Responsive landing page, service catalog, fictional work, inquiry form, and optional design-reference images. |
+| Studio story | Homepage introduction and a dedicated `/about` page covering the fictional studio's principles and creative process. |
 | Inquiry workflow | Server-validated intake, extended brief, honeypot and rate limits, atomic Supabase persistence, and centralized priority score. |
+| Deal-lead review | Protected engagement queue, suitability notes, first-claim-wins deal-lead ownership, and studio-member reassignment; acceptance is blocked until an engagement is suitable and assigned. |
 | Similarity advisory | Explicit opt-in; approved brief text is embedded and matched with Upstash Vector. Similarity and reviewed complexity/hour context are advisory and do not change priority or accept work automatically. |
 | Client portal | Supabase Auth sign-up/sign-in and client-owned inquiry list/detail views. |
 | Studio workspace | Protected dashboard, status-filtered/paginated inquiry inbox, inquiry detail, status/priority updates, private reference previews, similarity review, and live audit feed. |
@@ -26,9 +28,30 @@ personal, confidential, payment, or otherwise sensitive information.
 | Finance overview | Studio-member-only, read-only view of recent normalized finance records and the latest report. Transaction entry, reconciliation, and report publishing UI are not implemented. |
 | Operations | QStash reference verification and event-driven Slack delivery, Upstash Workflow for retryable tasks, one daily Vercel Cron as a Slack-outbox recovery sweep and 14-day demo-data cleanup, RLS-protected audit records, CI tests, and Vercel Speed Insights. |
 
+### Slack integration completion status
+
+**Implementation is in place; end-to-end validation is not complete.** The
+local demo uses synthetic Kiln Studio accounts and app-originated messages. It
+does not fabricate Slack accounts, installations, or provider events. Fully
+testing and correcting account linking, channel/member sync, and inbound and
+outbound message behavior requires actual participants with real Slack
+accounts in a dedicated test workspace. Until that testing is done, the Slack
+integration should be treated as implemented but not fully verified or
+production-proven. Do not connect it to an unrelated workspace.
+
+### Why an inquiry?
+
+The inquiry form collects the information needed to scope and price the work,
+sets the expectation that each request will be reviewed and negotiated rather
+than automatically accepted, and filters out low-effort requests. My additional
+reasoning is that asking someone to apply may make the studio feel more
+legitimate than promising assured attention; that's a design hypothesis, not a
+proven fact.
+
 ### Technical specifications
 
 - **Application:** Next.js 16 App Router, React 19, TypeScript 5.9, and Node.js Route Handlers.
+- **Runtime:** Node.js 22.x for local development, GitHub CI, and Vercel builds.
 - **Identity and relational data:** Supabase Auth and PostgreSQL; cookie-bound
   sessions, server-side authorization, and Row Level Security.
 - **Live updates:** Supabase Realtime for project-channel messages and studio
@@ -55,8 +78,10 @@ personal, confidential, payment, or otherwise sensitive information.
 1. A visitor sends a synthetic inquiry and optional visual references. The
    server validates the request, checks abuse controls, computes priority, and
    persists the inquiry and extended brief atomically.
-2. A studio member reviews the request, can inspect optional reference and
-   opt-in similarity results, and accepts it to create a project and channel.
+2. A deal lead reviews the engagement and marks it suitable, not suitable, or
+   in need of information. Suitable engagements can be claimed by the first
+   deal lead; a studio member can reassign them. A studio member can accept the
+   inquiry into a project only after it is suitable and assigned.
 3. The designer queue shows a minimal prioritized request projection. A
    designer can open sensitive details and the inquiry message room only after
    being added to that project's team.
@@ -85,14 +110,39 @@ personal, confidential, payment, or otherwise sensitive information.
   revoked; the current finance UI reads normalized finance/report data only.
 - The assistant stores question/answer text for FAQ review, without separate
   account/IP metadata. Submitted text is not PII-scrubbed automatically.
-- Upstash Box/Lead-Generator automation and autonomous studio-record actions
-  are deferred, not shipped features.
+- Instagram lead capture and autonomous studio-record actions are not shipped.
+- Negotiation, pricing policy, meetings, contracts, client-side checklists,
+  email workflows, and completion review from the small-team lifecycle remain
+  deferred. The implemented deal-lead slice is documented in
+  [docs/plan-docs/PLANv2.md](./docs/plan-docs/PLANv2.md).
+
+### Roadmap: opt-in Instagram comment-to-DM lead capture
+
+Rather than scrape contact details, explore an opt-in flow that receives
+Instagram comment webhooks for a professional account, stores a minimal
+idempotent lead record, and lets a studio member review it or link it to an
+inquiry; synthetic webhook fixtures can demonstrate this receiving/review
+path while Meta access is pending. Meta's current private-reply guidance
+allows one reply within seven days for post, ad, or Reel comments (Live
+comments only during the broadcast); a conversation can continue within the
+24-hour messaging window only after the person responds. Account eligibility
+and permissions vary by API setup, and serving accounts outside the app's
+roles requires Advanced Access, App Review, and Business Verification. Verify
+the current requirements before implementation. A webhook plus durable
+storage and queued/retryable processing fits the existing architecture, so
+Upstash Box is not needed for this use case. See Meta's
+[Instagram Platform overview](https://developers.facebook.com/documentation/instagram-platform/overview),
+[webhook guide](https://developers.facebook.com/documentation/instagram-platform/webhooks),
+and
+[private-replies guide](https://developers.facebook.com/documentation/business-messaging/instagram-messaging/features/private-replies).
 
 For the detailed walkthrough and limitations, see
 [docs/DEMO.md](./docs/DEMO.md). Architecture and file responsibilities are in
-[docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md); database schema and RLS are in
-[docs/DATABASE.md](./docs/DATABASE.md); integration prerequisites and deferred
-work are in [docs/PROD.md](./docs/PROD.md) and [docs/SLACK.md](./docs/SLACK.md).
+[docs/design-docs/ARCHITECTURE.md](./docs/design-docs/ARCHITECTURE.md); database
+schema and RLS are in [docs/design-docs/DATABASE.md](./docs/design-docs/DATABASE.md);
+integration prerequisites and deferred work are in
+[docs/plan-docs/PROD.md](./docs/plan-docs/PROD.md) and
+[docs/design-docs/SLACK.md](./docs/design-docs/SLACK.md).
 
 ## Local development
 
@@ -123,7 +173,7 @@ want to exercise.
    `supabase db reset` is destructive to the local database; never use it
    against a hosted project. For a hosted development project, link the
    intended project and review migrations before pushing. See
-   [docs/DATABASE.md](./docs/DATABASE.md).
+   [docs/design-docs/DATABASE.md](./docs/design-docs/DATABASE.md).
 4. Privately provision Supabase Auth users and trusted `app_metadata` access
    levels for studio/designer accounts; there is no public studio registration.
 5. Start the development server:
@@ -141,6 +191,7 @@ sign-in operations cannot be verified.
 | Route | Access | Purpose |
 | --- | --- | --- |
 | `/` | Public | Studio landing page. |
+| `/about` | Public | Studio story, working principles, and creative process. |
 | `/services`, `/work` | Public | Service overview and concept work. |
 | `/inquiry` | Public | Inquiry and design-brief form. |
 | `/assistant` | Public | Full-page customer-support chatbot. |
@@ -235,15 +286,43 @@ Next.js, then starts a disposable local Supabase stack, applies every
 migration, lints the public schema, and runs the pgTAP integration/RLS tests.
 It uses no hosted Supabase credentials and does not deploy.
 
+## GitHub and Vercel deployments
+
+Kiln Studio is a private Next.js application, not a distributable library or
+container image. It is deployed as a website through Vercel's Git integration:
+
+| Purpose | Source | Vercel target |
+| --- | --- | --- |
+| Production | `main` | Production deployment and production domain. |
+| Preview | Pull requests and non-production branches, including `dev` | Isolated preview URL for review. |
+| Development | Local working copy; optionally `vercel dev` with Development variables | Local development, not a published deployment. |
+
+GitHub Actions runs the CI checks described above. Vercel's Git integration
+creates deployments and reports their status back to the corresponding GitHub
+commit or pull request; GitHub Actions does not run a separate Vercel deploy.
+Do not publish this repository to npm or GitHub Packages.
+
+The Vercel project is linked to `hsxtheemperor/Kiln-Studio`, with `main`
+selected as its production branch and Node.js 22.x aligned with CI. Configure
+distinct values for Vercel's Production, Preview, and Development environment
+variables. Preview and Development should use dedicated test services and
+synthetic data rather than production credentials. See
+[docs/design-docs/DEPLOYMENT.md](./docs/design-docs/DEPLOYMENT.md) for setup and
+verification details.
+
 ## License
 
 This project is licensed under the [MIT License](./LICENSE).
 
 ## Documentation
 
-- [Architecture and file responsibilities](./docs/ARCHITECTURE.md)
-- [Database schema, migrations, and access boundaries](./docs/DATABASE.md)
+- [Architecture and file responsibilities](./docs/design-docs/ARCHITECTURE.md)
+- [Database schema, migrations, and access boundaries](./docs/design-docs/DATABASE.md)
 - [Current demo behavior and limitations](./docs/DEMO.md)
-- [Current implementation status and next steps](./docs/PLAN.md)
-- [Slack integration notes](./docs/SLACK.md)
-- [Production boundaries and deferred roadmap](./docs/PROD.md)
+- [Current implementation status and next steps](./docs/plan-docs/PLAN.md)
+- [GitHub and Vercel deployment setup](./docs/design-docs/DEPLOYMENT.md)
+- [Slack integration notes](./docs/design-docs/SLACK.md)
+- [Production boundaries and deferred roadmap](./docs/plan-docs/PROD.md)
+- [Performance and security audit](./docs/report-docs/AUDIT.md)
+- [Security review summary](./docs/report-docs/SECURITY-REVIEW.md)
+- [Application consistency report](./docs/report-docs/REPORT.md)

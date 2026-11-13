@@ -32,6 +32,9 @@ scrubbed; visitors are told not to include personal or sensitive details.
 
 - Studio members sign in through provisioned accounts; there is no public
   studio-member registration.
+- Deal leads also use provisioned accounts and sign in through the private
+  studio sign-in page. They can review open engagements and claim suitable
+  work; studio members can oversee and reassign it.
 - The studio dashboard summarizes inquiries and provides a live,
   studio-restricted system-activity feed.
 - The inquiry inbox supports status filtering, pagination, and inquiry detail
@@ -42,7 +45,8 @@ scrubbed; visitors are told not to include personal or sensitive details.
   inquiry-linked messages are available only to assigned designers and studio
   members.
 - A studio member accepting an inquiry creates a distinct project and its
-  dedicated project channel.
+  dedicated project channel, but only after its engagement has been marked
+  suitable and assigned to a deal lead. PostgreSQL enforces this prerequisite.
 
 ## Project and team collaboration
 
@@ -89,10 +93,12 @@ authorization or provide equivalent project-role permissions.
 2. Apply the repository migrations to a development database and provision
    test accounts with trusted `app_metadata.access_level` values.
 3. Start the app with `pnpm dev` and submit a synthetic inquiry.
-4. Sign in as a client to view owned inquiries; as a studio member to review
-   and update an inquiry; or as a designer to inspect the queue and messaging.
-5. Accept a synthetic inquiry, then inspect its project, channel, membership,
-   Realtime messages, and PM-controlled completion.
+4. Sign in as a client to view owned inquiries; as a deal lead to review and
+   claim a suitable engagement; as a studio member to review, reassign, and
+   convert a qualified inquiry; or as a designer to inspect the queue and
+   messaging.
+5. Accept a suitable, assigned synthetic inquiry, then inspect its project,
+   channel, membership, Realtime messages, and PM-controlled completion.
 6. Exercise optional Slack, similarity, upload, and assistant flows only when
    their providers are configured for the intended test environment.
 
@@ -103,6 +109,8 @@ authorization or provide equivalent project-role permissions.
   PII scrubbing is provided.
 - No autonomous agent can change studio records or make business decisions.
 - Finance entry and accounting reconciliation are not available in the UI.
+- Negotiation, policy-based pricing, meetings, contracts, emails, and
+  completion review are not part of the implemented deal-lead slice.
 - Availability self-service and general/announcement chat composition are not
   implemented.
 - Slack history import/backfill, full edit/delete/thread synchronization, and
@@ -111,6 +119,7 @@ authorization or provide equivalent project-role permissions.
 - A successful local test/build does not verify external provider credentials,
   Slack workspace behavior, deployment schedules, or hosted RLS configuration.
 
-See [ARCHITECTURE.md](./ARCHITECTURE.md) for the application map,
-[DATABASE.md](./DATABASE.md) for persistence and access policies, and
-[PROD.md](./PROD.md) for deployment prerequisites and deferred work.
+See [ARCHITECTURE.md](./design-docs/ARCHITECTURE.md) for the application map,
+[DATABASE.md](./design-docs/DATABASE.md) for persistence and access policies,
+and [PROD.md](./plan-docs/PROD.md) for deployment prerequisites and deferred
+work.

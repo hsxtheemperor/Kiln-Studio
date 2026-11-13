@@ -51,20 +51,21 @@ export async function POST(request: Request) {
     );
   }
 
-  if (data.user.app_metadata.access_level !== "studio_member") {
+  const accessLevel = data.user.app_metadata.access_level;
+  if (accessLevel !== "studio_member" && accessLevel !== "deal_lead") {
     const { error: signOutError } = await supabase.auth.signOut();
     if (signOutError) {
       console.error("Unprivileged Supabase session could not be cleared.");
     }
 
     return NextResponse.json(
-      { error: "Studio-member access is required." },
+      { error: "Private studio access is required." },
       { status: 403, headers: { "Cache-Control": "no-store" } },
     );
   }
 
   return NextResponse.json(
-    { message: "Signed in." },
+    { message: "Signed in.", accessLevel },
     { headers: { "Cache-Control": "no-store" } },
   );
 }

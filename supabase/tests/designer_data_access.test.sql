@@ -2,6 +2,16 @@ BEGIN;
 
 SELECT plan(17);
 
+INSERT INTO auth.users (
+  id, aud, role, email, encrypted_password, email_confirmed_at,
+  raw_app_meta_data, raw_user_meta_data, created_at, updated_at
+)
+VALUES (
+  '10000000-0000-0000-0000-000000000199',
+  'authenticated', 'authenticated', 'access-deal-lead@example.test', '',
+  now(), '{"access_level":"deal_lead"}', '{}', now(), now()
+);
+
 INSERT INTO public.team_members (id, user_id, full_name, email)
 VALUES
   ('20000000-0000-0000-0000-000000000101', '10000000-0000-0000-0000-000000000101', 'Assigned Designer', 'assigned@example.test'),
@@ -12,7 +22,17 @@ INSERT INTO public.inquiries (
 )
 VALUES
   ('30000000-0000-0000-0000-000000000101', 'Unassigned Client', 'unassigned@example.test', 'Unassigned Co', 'brand_identity', 'Private first brief', 'new', 10),
-  ('30000000-0000-0000-0000-000000000102', 'Assigned Client', 'assigned-client@example.test', 'Assigned Co', 'web_design', 'Private second brief', 'accepted', 9);
+  ('30000000-0000-0000-0000-000000000102', 'Assigned Client', 'assigned-client@example.test', 'Assigned Co', 'web_design', 'Private second brief', 'new', 9);
+
+UPDATE public.engagements
+SET review_state = 'suitable',
+    deal_lead_id = '10000000-0000-0000-0000-000000000199',
+    claimed_at = now()
+WHERE inquiry_id = '30000000-0000-0000-0000-000000000102';
+
+UPDATE public.inquiries
+SET status = 'accepted'
+WHERE id = '30000000-0000-0000-0000-000000000102';
 
 INSERT INTO public.inquiry_briefs (inquiry_id, design_goal, brand_message)
 VALUES

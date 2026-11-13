@@ -56,10 +56,34 @@ describe("Admin auth endpoints", () => {
     );
 
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ message: "Signed in." });
+    expect(await response.json()).toEqual({
+      message: "Signed in.",
+      accessLevel: "studio_member",
+    });
     expect(mockClient.auth.signInWithPassword).toHaveBeenCalledWith({
       email: "team@kilnstudio.test",
       password: "secure-password-123",
+    });
+  });
+
+  it("allows a provisioned deal lead and returns the engagement workspace role", async () => {
+    mockClient.auth.signInWithPassword.mockResolvedValue({
+      data: { user: { app_metadata: { access_level: "deal_lead" } } },
+      error: null,
+    });
+
+    const response = await POST(
+      new Request("https://kiln-studio.test/api/admin/auth", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email: "lead@kilnstudio.test", password: "secure-password-123" }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      message: "Signed in.",
+      accessLevel: "deal_lead",
     });
   });
 
@@ -80,7 +104,7 @@ describe("Admin auth endpoints", () => {
 
     expect(response.status).toBe(403);
     expect(await response.json()).toEqual({
-      error: "Studio-member access is required.",
+      error: "Private studio access is required.",
     });
     expect(mockClient.auth.signOut).toHaveBeenCalledTimes(1);
   });

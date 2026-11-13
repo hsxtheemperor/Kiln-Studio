@@ -44,7 +44,7 @@ export function buildInquiryEmbeddingText(input: {
 }
 
 async function createEmbedding(text: string): Promise<number[]> {
-  const apiKey = process.env.OPENAI_API_KEY;
+  const apiKey = process.env.OPENAI_API_KEY || process.env.OPENAI_API;
   if (!apiKey) {
     throw new Error("OpenAI embeddings are not configured.");
   }

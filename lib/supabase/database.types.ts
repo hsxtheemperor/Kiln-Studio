@@ -46,6 +46,25 @@ export type InquiryRow = {
   updated_at: string;
 };
 
+export type EngagementReviewState =
+  | "pending"
+  | "suitable"
+  | "not_suitable"
+  | "needs_info";
+
+export type EngagementRow = {
+  id: string;
+  inquiry_id: string;
+  review_state: EngagementReviewState;
+  review_notes: string | null;
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  deal_lead_id: string | null;
+  claimed_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 export type InquiryInsert = {
   client_id?: string | null;
   name: string;
@@ -404,6 +423,40 @@ export type FaqItemRow = {
 export type Database = {
   public: {
     Tables: {
+      engagements: {
+        Row: EngagementRow;
+        Insert: {
+          id?: string;
+          inquiry_id: string;
+          review_state?: EngagementReviewState;
+          review_notes?: string | null;
+          reviewed_by?: string | null;
+          reviewed_at?: string | null;
+          deal_lead_id?: string | null;
+          claimed_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: never;
+        Relationships: [];
+      };
+      engagement_events: {
+        Row: {
+          id: number;
+          engagement_id: string;
+          event_type: "created" | "reviewed" | "claimed" | "reassigned";
+          actor_user_id: string | null;
+          previous_state: string | null;
+          next_state: string | null;
+          previous_deal_lead_id: string | null;
+          next_deal_lead_id: string | null;
+          notes: string | null;
+          occurred_at: string;
+        };
+        Insert: never;
+        Update: never;
+        Relationships: [];
+      };
       inquiries: {
         Row: InquiryRow;
         Insert: InquiryInsert & {
@@ -791,6 +844,22 @@ export type Database = {
 
     Views: { [_ in never]: never };
     Functions: {
+      review_engagement: {
+        Args: {
+          p_inquiry_id: string;
+          p_review_state: EngagementReviewState;
+          p_notes?: string | null;
+        };
+        Returns: EngagementRow;
+      };
+      claim_engagement: {
+        Args: { p_inquiry_id: string };
+        Returns: EngagementRow;
+      };
+      reassign_engagement: {
+        Args: { p_inquiry_id: string; p_deal_lead_id: string };
+        Returns: EngagementRow;
+      };
       create_public_inquiry_with_brief: {
         Args: { p_inquiry: Json; p_brief: Json };
         Returns: string;
