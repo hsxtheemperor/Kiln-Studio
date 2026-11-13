@@ -89,7 +89,7 @@ merging; merging to `main` creates the Production deployment.
 3. Merge only after required checks pass; verify a Production deployment is
    created from `main`.
 4. Confirm the production domain and daily Cron in Vercel. The Cron is defined
-   by [`../vercel.json`](../vercel.json).
+   by [`vercel.json`](../../vercel.json).
 5. Confirm local `pnpm dev` works with Development Supabase/provider values;
    optionally use `vercel dev` when Vercel-specific local behavior is needed.
 

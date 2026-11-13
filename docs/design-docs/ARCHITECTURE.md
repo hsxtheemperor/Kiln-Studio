@@ -158,7 +158,7 @@ Next.js route groups organize layouts without adding URL prefixes.
 | `supabase/migrations/20261112000000_scope_designer_access_and_bound_workspace_reads.sql` | Adds a minimal designer queue projection, assignment-scoped inquiry/brief/message policies, studio-only legacy finance reads, and paginates project channels. |
 | `supabase/tests/` | pgTAP coverage for inquiry priority/atomic writes, reference-file access and linking, project lifecycle and RLS, designer assignment boundaries, finance/report behavior, grants, team roles, channel rules, and support-message privacy/idempotency. |
 | `.github/workflows/ci.yml` | Runs application tests, QStash/Workflow-focused checks, typecheck/build, and clean local Supabase migration, lint, and pgTAP checks on pull requests and all pushes; no deployment. |
-| `docs/DEPLOYMENT.md` | Documents GitHub CI, Vercel Production/Preview/Development targets, environment-variable boundaries, and deployment verification. |
+| `docs/design-docs/DEPLOYMENT.md` | Documents GitHub CI, Vercel Production/Preview/Development targets, environment-variable boundaries, and deployment verification. |
 | `lib/supabase/database.types.ts` | Application-side Supabase row/insert types. |
 | `tests/unit/`, `tests/lib/`, `tests/api/` | Focused validation, priority, upload/queue, similarity, and API/auth tests. |
 | `tests/e2e/` | Placeholder for browser-level workflows. |
@@ -183,7 +183,8 @@ database transitions. Deal leads can review unclaimed or self-owned work and
 claim a suitable engagement; studio members can oversee and reassign it.
 Postgres also blocks accepting an inquiry until it is suitable and assigned.
 Negotiation, meetings, contracts, email, and completion review remain deferred;
-Instagram lead capture is a separate deferred plan in `docs/INSTAGRAM.md`.
+Instagram lead capture is a separate deferred plan in
+`docs/plan-docs/INSTAGRAM.md`.
 
 **Connected to backend:** public inquiry and brief persistence, inquiry priority,
 client account/profile flows, admin inquiry reads and status/priority updates,
@@ -222,7 +223,7 @@ Availability editing, general/announcement chat, and message pagination are
 not implemented. Channel messages stream over Supabase Realtime. Online and
 typing indicators use project-member-scoped Redis keys with short TTLs; they
 are ephemeral and do not replace Postgres messages. See
-[DATABASE.md](./DATABASE.md) and [DEMO.md](./DEMO.md).
+[DATABASE.md](./DATABASE.md) and [DEMO.md](../DEMO.md).
 
 **Slack synchronization:** workspace installation and designer account linking
 use verified OAuth. The Postgres outbox creates private project channels,

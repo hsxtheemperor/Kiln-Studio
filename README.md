@@ -28,6 +28,26 @@ personal, confidential, payment, or otherwise sensitive information.
 | Finance overview | Studio-member-only, read-only view of recent normalized finance records and the latest report. Transaction entry, reconciliation, and report publishing UI are not implemented. |
 | Operations | QStash reference verification and event-driven Slack delivery, Upstash Workflow for retryable tasks, one daily Vercel Cron as a Slack-outbox recovery sweep and 14-day demo-data cleanup, RLS-protected audit records, CI tests, and Vercel Speed Insights. |
 
+### Slack integration completion status
+
+**Implementation is in place; end-to-end validation is not complete.** The
+local demo uses synthetic Kiln Studio accounts and app-originated messages. It
+does not fabricate Slack accounts, installations, or provider events. Fully
+testing and correcting account linking, channel/member sync, and inbound and
+outbound message behavior requires actual participants with real Slack
+accounts in a dedicated test workspace. Until that testing is done, the Slack
+integration should be treated as implemented but not fully verified or
+production-proven. Do not connect it to an unrelated workspace.
+
+### Why an inquiry?
+
+The inquiry form collects the information needed to scope and price the work,
+sets the expectation that each request will be reviewed and negotiated rather
+than automatically accepted, and filters out low-effort requests. My additional
+reasoning is that asking someone to apply may make the studio feel more
+legitimate than promising assured attention; that's a design hypothesis, not a
+proven fact.
+
 ### Technical specifications
 
 - **Application:** Next.js 16 App Router, React 19, TypeScript 5.9, and Node.js Route Handlers.
@@ -94,7 +114,7 @@ personal, confidential, payment, or otherwise sensitive information.
 - Negotiation, pricing policy, meetings, contracts, client-side checklists,
   email workflows, and completion review from the small-team lifecycle remain
   deferred. The implemented deal-lead slice is documented in
-  [docs/PLANv2.md](./docs/PLANv2.md).
+  [docs/plan-docs/PLANv2.md](./docs/plan-docs/PLANv2.md).
 
 ### Roadmap: opt-in Instagram comment-to-DM lead capture
 
@@ -118,9 +138,11 @@ and
 
 For the detailed walkthrough and limitations, see
 [docs/DEMO.md](./docs/DEMO.md). Architecture and file responsibilities are in
-[docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md); database schema and RLS are in
-[docs/DATABASE.md](./docs/DATABASE.md); integration prerequisites and deferred
-work are in [docs/PROD.md](./docs/PROD.md) and [docs/SLACK.md](./docs/SLACK.md).
+[docs/design-docs/ARCHITECTURE.md](./docs/design-docs/ARCHITECTURE.md); database
+schema and RLS are in [docs/design-docs/DATABASE.md](./docs/design-docs/DATABASE.md);
+integration prerequisites and deferred work are in
+[docs/plan-docs/PROD.md](./docs/plan-docs/PROD.md) and
+[docs/design-docs/SLACK.md](./docs/design-docs/SLACK.md).
 
 ## Local development
 
@@ -151,7 +173,7 @@ want to exercise.
    `supabase db reset` is destructive to the local database; never use it
    against a hosted project. For a hosted development project, link the
    intended project and review migrations before pushing. See
-   [docs/DATABASE.md](./docs/DATABASE.md).
+   [docs/design-docs/DATABASE.md](./docs/design-docs/DATABASE.md).
 4. Privately provision Supabase Auth users and trusted `app_metadata` access
    levels for studio/designer accounts; there is no public studio registration.
 5. Start the development server:
@@ -285,7 +307,8 @@ selected as its production branch and Node.js 22.x aligned with CI. Configure
 distinct values for Vercel's Production, Preview, and Development environment
 variables. Preview and Development should use dedicated test services and
 synthetic data rather than production credentials. See
-[docs/DEPLOYMENT.md](./docs/DEPLOYMENT.md) for setup and verification details.
+[docs/design-docs/DEPLOYMENT.md](./docs/design-docs/DEPLOYMENT.md) for setup and
+verification details.
 
 ## License
 
@@ -293,10 +316,13 @@ This project is licensed under the [MIT License](./LICENSE).
 
 ## Documentation
 
-- [Architecture and file responsibilities](./docs/ARCHITECTURE.md)
-- [Database schema, migrations, and access boundaries](./docs/DATABASE.md)
+- [Architecture and file responsibilities](./docs/design-docs/ARCHITECTURE.md)
+- [Database schema, migrations, and access boundaries](./docs/design-docs/DATABASE.md)
 - [Current demo behavior and limitations](./docs/DEMO.md)
-- [Current implementation status and next steps](./docs/PLAN.md)
-- [GitHub and Vercel deployment setup](./docs/DEPLOYMENT.md)
-- [Slack integration notes](./docs/SLACK.md)
-- [Production boundaries and deferred roadmap](./docs/PROD.md)
+- [Current implementation status and next steps](./docs/plan-docs/PLAN.md)
+- [GitHub and Vercel deployment setup](./docs/design-docs/DEPLOYMENT.md)
+- [Slack integration notes](./docs/design-docs/SLACK.md)
+- [Production boundaries and deferred roadmap](./docs/plan-docs/PROD.md)
+- [Performance and security audit](./docs/report-docs/AUDIT.md)
+- [Security review summary](./docs/report-docs/SECURITY-REVIEW.md)
+- [Application consistency report](./docs/report-docs/REPORT.md)

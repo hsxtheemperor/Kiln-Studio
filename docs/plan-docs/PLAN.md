@@ -1,10 +1,11 @@
 # Implementation status and next steps
 
 This document is a short status snapshot, not an exhaustive design backlog.
-The [README](../README.md) is the user-facing feature specification;
-[DEMO.md](./DEMO.md) explains the walkthrough and limitations;
-[ARCHITECTURE.md](./ARCHITECTURE.md) and [DATABASE.md](./DATABASE.md) describe
-the implementation and schema.
+The [README](../../README.md) is the user-facing feature specification;
+[DEMO.md](../DEMO.md) explains the walkthrough and limitations;
+[ARCHITECTURE.md](../design-docs/ARCHITECTURE.md) and
+[DATABASE.md](../design-docs/DATABASE.md) describe the implementation and
+schema.
 
 ## Implemented
 

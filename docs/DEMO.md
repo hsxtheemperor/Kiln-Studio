@@ -119,6 +119,7 @@ authorization or provide equivalent project-role permissions.
 - A successful local test/build does not verify external provider credentials,
   Slack workspace behavior, deployment schedules, or hosted RLS configuration.
 
-See [ARCHITECTURE.md](./ARCHITECTURE.md) for the application map,
-[DATABASE.md](./DATABASE.md) for persistence and access policies, and
-[PROD.md](./PROD.md) for deployment prerequisites and deferred work.
+See [ARCHITECTURE.md](./design-docs/ARCHITECTURE.md) for the application map,
+[DATABASE.md](./design-docs/DATABASE.md) for persistence and access policies,
+and [PROD.md](./plan-docs/PROD.md) for deployment prerequisites and deferred
+work.

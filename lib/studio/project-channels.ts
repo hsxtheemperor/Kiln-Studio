@@ -58,30 +58,31 @@ export async function getProjectChannels(
   const projectIds = pageRows.flatMap((channel) =>
     channel.project_id ? [channel.project_id] : [],
   );
-  const inquiryIds = pageRows.flatMap((channel) =>
-    channel.inquiry_id ? [channel.inquiry_id] : [],
-  );
 
-  const [
-    { data: projects, error: projectsError },
-    { data: inquiries, error: inquiryError },
-    { data: currentMember, error: memberError },
-  ] = await Promise.all([
+  const [{ data: projects, error: projectsError }, { data: currentMember, error: memberError }] =
+    await Promise.all([
     supabase.from("projects").select("*").in("id", projectIds),
-    supabase
-      .from("inquiries")
-      .select("id, priority_score")
-      .in("id", inquiryIds),
     supabase
       .from("team_members")
       .select("id")
       .eq("user_id", userId)
       .maybeSingle(),
-  ]);
+    ]);
 
-  const queryError = projectsError ?? inquiryError ?? memberError;
+  const queryError = projectsError ?? memberError;
   if (queryError) {
     console.error("Project channel details could not be loaded.", queryError.message);
+    return { channels: [], hasMore: false, error: "Project channel details are temporarily unavailable." };
+  }
+
+  const projectRows = projects ?? [];
+  const inquiryIds = [...new Set(projectRows.map((project) => project.inquiry_id))];
+  const { data: inquiries, error: inquiryError } = await supabase
+    .from("inquiries")
+    .select("id, priority_score")
+    .in("id", inquiryIds);
+  if (inquiryError) {
+    console.error("Project inquiry details could not be loaded.", inquiryError.message);
     return { channels: [], hasMore: false, error: "Project channel details are temporarily unavailable." };
   }
 
@@ -90,14 +91,14 @@ export async function getProjectChannels(
 
   const mappedChannels: ProjectChannelView[] = [];
   for (const channel of pageRows) {
-    if (!channel.project_id || !channel.inquiry_id) continue;
+    if (!channel.project_id) continue;
     const project = projectById.get(channel.project_id);
     if (!project) continue;
-    const priority = priorityByInquiry.get(channel.inquiry_id) ?? 0;
+    const priority = priorityByInquiry.get(project.inquiry_id) ?? 0;
     mappedChannels.push({
       ...channel,
       project_id: channel.project_id,
-      inquiry_id: channel.inquiry_id,
+      inquiry_id: project.inquiry_id,
       project_status: project.status,
       deadline_date: project.deadline_date,
       priority_score: priority,

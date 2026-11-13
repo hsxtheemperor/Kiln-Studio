@@ -975,6 +975,9 @@ export function TeamWorkspace({
                             <div className="message-meta">
                               <strong>{message.sender_name}</strong>
                               {message.sender_role && <span>{message.sender_role}</span>}
+                              <span className="message-origin">
+                                From {message.message_source === "slack" ? "Slack" : "Kiln Studio"}
+                              </span>
                               <time dateTime={message.created_at}>
                                 {new Date(message.created_at).toLocaleString()}
                               </time>

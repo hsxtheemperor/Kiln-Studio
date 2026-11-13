@@ -19,9 +19,9 @@
 | --- | --- | --- | --- |
 | P5 | Medium at larger engagement counts — **remediated** | High | The default engagement queue's `(created_at DESC, id DESC)` ordering did not have a matching index; a local `EXPLAIN` showed a sequential scan followed by a sort. |
 
-**Evidence:** [`app/api/admin/engagements/route.ts`](./app/api/admin/engagements/route.ts)
+**Evidence:** [`app/api/admin/engagements/route.ts`](../../app/api/admin/engagements/route.ts)
 applies the ordered, exact-count, offset-paginated query. The index in
-[`20261112100000_add_engagement_review_foundation.sql`](./supabase/migrations/20261112100000_add_engagement_review_foundation.sql)
+[`20261112100000_add_engagement_review_foundation.sql`](../../supabase/migrations/20261112100000_add_engagement_review_foundation.sql)
 starts with `review_state`, which did not support the unfiltered ordering. On
 the clean local database before the fix, PostgreSQL planned
 `Limit -> Sort -> Seq Scan` for the unfiltered query (estimated 430 rows).

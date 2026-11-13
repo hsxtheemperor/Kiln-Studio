@@ -65,9 +65,8 @@ enabled = true
 schema_paths = []
 
 [db.seed]
-# This repository has no seed file; integration tests create and roll back fixtures.
-enabled = false
-sql_paths = []
+enabled = true
+sql_paths = ["./seedings/*.sql"]
 
 [db.network_restrictions]
 # Enable management of network restrictions.
